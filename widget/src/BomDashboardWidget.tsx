@@ -39,6 +39,8 @@ const CLASS_STYLES: Record<string, string> = {
   Major: "bg-red-100 text-red-800",
 };
 
+const GAP_MS = 6 * 60 * 60_000;
+
 const TREND_ARROWS: Record<string, string> = { rising: "↑", falling: "↓", steady: "→" };
 
 function useNow(intervalMs = 60_000): number {
@@ -116,7 +118,10 @@ function Sparkline({ points, bands, now }: { points: Array<[number, number]>; ba
   const t0 = now - HISTORY_WINDOW_MS;
   const x = (t: number) => ((t - t0) / HISTORY_WINDOW_MS) * w;
   const y = (v: number) => h - 4 - ((v - lo) / (hi - lo)) * (h - 8);
-  const d = points.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  // Start a new segment across gaps, so missing data isn't drawn as a straight line.
+  const d = points
+    .map(([t, v], i) => `${i && t - points[i - 1][0] < GAP_MS ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`)
+    .join("");
   const minor = bands[1]?.min;
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-14 w-full" preserveAspectRatio="none" role="img" aria-label="River level, last 7 days">
