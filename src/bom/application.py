@@ -41,7 +41,7 @@ def flood_ranges(levels: list[float | None], lowest: float) -> list[dict]:
     ranges = [ui.Range("Below flood level", lower, bands[0][1], ui.Colour.green)]
     for i, (name, start, colour) in enumerate(bands):
         prev = bands[i - 1][1] if i else lower
-        end = bands[i + 1][1] if i + 1 < len(bands) else start + max(1.0, start - prev)
+        end = bands[i + 1][1] if i + 1 < len(bands) else round(start + max(1.0, start - prev), 2)
         ranges.append(ui.Range(name, start, end, colour))
     return [r.to_dict() for r in ranges]
 
