@@ -98,7 +98,6 @@ class Bom(Application):
                 ftp.directory.value,
                 prefixes,
                 protocol=ftp.protocol.value,
-                port=ftp.port.value,
                 private_key=ftp.private_key.value,
             )
         except Exception as e:

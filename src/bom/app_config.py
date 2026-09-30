@@ -28,7 +28,6 @@ FILES_HELP = (
 FTP_DEFAULTS = {
     "protocol": "FTP",
     "host": "ftp.bom.gov.au",
-    "port": None,
     "username": "anonymous",
     "password": "",
     "private_key": "",
@@ -46,6 +45,10 @@ FLOOD_HELP = "Flood classification level in the gauge's datum (m)."
 RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
 
 
+uses_ftp = config.equal("protocol", "FTP")
+uses_sftp = config.equal("protocol", "SFTP")
+
+
 class FtpSettings(config.Object):
     protocol = config.Enum(
         "Protocol",
@@ -54,17 +57,18 @@ class FtpSettings(config.Object):
         description="FTP for ftp.bom.gov.au; SFTP (SSH key) for sftp-reg.cloud.bom.gov.au.",
     )
     host = config.String("Host", default=FTP_DEFAULTS["host"])
-    port = config.Integer(
-        "Port", default=None, description="Leave blank for the default (FTP 21, SFTP 22)."
-    )
     username = config.String("Username", default=FTP_DEFAULTS["username"])
     password = config.String(
-        "Password", default="", description="FTP only. Leave blank for anonymous access."
+        "Password",
+        default="",
+        description="Leave blank for anonymous access.",
+        show_if=uses_ftp,
     )
     private_key = config.String(
         "Private Key",
         default="",
-        description="SFTP only. The SSH private key (PEM or OpenSSH format) registered with BOM.",
+        description="The SSH private key (PEM or OpenSSH format) registered with BOM.",
+        show_if=uses_sftp,
     )
     directory = config.String("Directory", default=FTP_DEFAULTS["directory"])
 

@@ -31,14 +31,13 @@ def download_latest(
     directory: str,
     prefixes: list[str],
     protocol: str = "FTP",
-    port: int | None = None,
     private_key: str = "",
     timeout: float = 60,
 ) -> dict[str, str]:
     """Return {file name: text} for the newest file matching each prefix."""
     if protocol == "SFTP":
-        return _download_sftp(host, port or 22, username, private_key, directory, prefixes, timeout)
-    return _download_ftp(host, port or 21, username, password, directory, prefixes, timeout)
+        return _download_sftp(host, 22, username, private_key, directory, prefixes, timeout)
+    return _download_ftp(host, 21, username, password, directory, prefixes, timeout)
 
 
 def _download_ftp(host, port, username, password, directory, prefixes, timeout):
