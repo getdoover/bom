@@ -1,7 +1,7 @@
 {
     "bom": {
         "name": "bom",
-        "display_name": "Bureau of Meteorology",
+        "display_name": "BoM Station",
         "type": "PRO",
         "visibility": "PUB",
         "allow_many": false,
@@ -22,7 +22,7 @@
     },
     "bom_dashboard": {
         "name": "bom_dashboard",
-        "display_name": "BOM Dashboard",
+        "display_name": "BoM FWIN Dashboard",
         "type": "PRO",
         "visibility": "PUB",
         "allow_many": false,

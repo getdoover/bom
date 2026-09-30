@@ -20,7 +20,27 @@ def rain_ranges(hours: float) -> list[Range]:
     return [Range(label, lo * hours, hi * hours, c) for label, lo, hi, c in RAIN_RATE_CLASSES]
 
 
+def layout(config, tags) -> str:
+    """Which optional parts the UI shows, from the configured stations and their data.
+
+    `river` plots the level, `radial` shows it as a gauge (it has flood bands),
+    and the rain series is the 15-minute total when the feed is 15-minute, else
+    the last-hour total.
+    """
+    parts = []
+    if config.river.station_id.value.strip() and tags.river_level.value is not None:
+        parts.append("river")
+        if tags.river_ranges.value:
+            parts.append("radial")
+    if config.rain.station_id.value.strip() and tags.rain_period_s.value is not None:
+        parts.append("rain_15min" if tags.rain_period_s.value == 900 else "rain_last_hour")
+    return ",".join(parts)
+
+
 class BomUI(ui.UI):
+    # Series are added in setup(), once it is known which data this device has.
+    overview = ui.Multiplot("Overview", series=[])
+
     river_level = ui.NumericVariable(
         "River Level",
         value=T.river_level,
@@ -67,6 +87,47 @@ class BomUI(ui.UI):
             ui.TextVariable("Status", value=T.status, icon="circle-info"),
         ],
     )
+
+
+    async def setup(self) -> None:
+        parts = layout(self.config, self.tags).split(",")
+        if "radial" in parts:
+            self.river_level.form = ui.Widget.radial
+
+        series = []
+        if "river" in parts:
+            series.append(
+                ui.Series(
+                    "River Level",
+                    value=T.river_level,
+                    name="river_level",
+                    data_type="number",
+                    units="m",
+                    colour=Colour.blue,
+                    ranges=T.river_ranges,
+                    active=True,
+                )
+            )
+        rain = next((p for p in parts if p.startswith("rain_")), None)
+        if rain:
+            series.append(
+                ui.Series(
+                    "Rain Last 15 min" if rain == "rain_15min" else "Rain Last Hour",
+                    value=getattr(T, rain),
+                    name=rain,
+                    data_type="number",
+                    units="mm",
+                    colour=Colour.purple,
+                    shared_axis=False,
+                    active=True,
+                )
+            )
+        if series:
+            self.overview.series = series
+            if "radial" in parts:
+                self.overview.default_range_view = "zone"
+        else:
+            self.remove_element("overview")
 
 
 def export() -> None:

@@ -7,7 +7,7 @@ from pydoover.processor import ExtendedPermissionsConfig
 
 
 class BomDashboardConfig(config.Schema):
-    # The widget finds each device's Bureau of Meteorology install by its
+    # The widget finds each device's BoM Station install by its
     # application name, then reads that install's tags and history.
     extended_permissions = ExtendedPermissionsConfig(
         extra_fields=[

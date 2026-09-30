@@ -13,7 +13,7 @@ from pydoover.tags.manager import LogMode
 
 from .app_config import STATES, BomConfig
 from .app_tags import BomTags
-from .app_ui import BomUI
+from .app_ui import BomUI, layout
 from .floodmap import find_levels
 from .ftp import download_latest
 from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
@@ -69,6 +69,8 @@ class Bom(Application):
         await self.refresh()
 
     async def on_deployment(self, event: DeploymentEvent) -> None:
+        # The framework has just published the UI for the current tags.
+        await self.tags.ui_layout.set(layout(self.config, self.tags))
         await self.refresh()
 
     async def on_manual_invoke(self, event: ManualInvokeEvent) -> None:
@@ -136,6 +138,8 @@ class Bom(Application):
             f"No data in BOM files for {', '.join(missing)}" if missing else "OK"
         )
 
+        await self.update_layout()
+
         latest = max((r.time for r in levels + rains), default=None)
         if latest is not None:
             await self.ping_connection(
@@ -143,6 +147,20 @@ class Bom(Application):
                 offline_at=latest
                 + timedelta(minutes=self.config.offline_after_minutes.value),
             )
+
+    async def update_layout(self) -> None:
+        """Republish the UI when this run's data changes which parts it shows.
+
+        The UI is otherwise only published on deployment, which is before the
+        first readings and flood levels are known.
+        """
+        current = layout(self.config, self.tags)
+        if current == self.tags.ui_layout.value:
+            return
+        self.ui = self.ui_cls(self.config, self.tags, self.app_key)
+        await self.ui.setup()
+        await self.publish_ui_schema()
+        await self.tags.ui_layout.set(current)
 
     async def flood_levels(self, river_id: str, letter: str) -> list[float | None]:
         """Manual flood levels, with any not given taken from BOM's flood maps."""
@@ -210,8 +228,11 @@ class Bom(Application):
             if reading_day != day:
                 day, total = reading_day, 0.0
             total += r.value
+            hour = sum(x.value for x in rains if r.time - timedelta(hours=1) < x.time <= r.time)
             history[to_ms(r.time)].update(
-                rain_15min=r.value, rain_since_9am=round(total, 1)
+                rain_15min=r.value,
+                rain_last_hour=round(hour, 1),
+                rain_since_9am=round(total, 1),
             )
             last_ms = to_ms(r.time)
 
@@ -228,3 +249,4 @@ class Bom(Application):
             await self.tags.rain_15min.set(latest.value)
             await self.tags.rain_last_hour.set(round(sum(hour), 1))
             await self.tags.rain_time.set(last_ms)
+            await self.tags.rain_period_s.set(latest.period_s)

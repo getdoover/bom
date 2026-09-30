@@ -59,7 +59,7 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v : null;
 }
 
-/** The device's Bureau of Meteorology install key (its `tag_values` root). */
+/** The device's BoM Station install key (its `tag_values` root). */
 export function bomAppKey(device: GaugeDevice, tags?: TagValues): string | null {
   for (const install of device.app_installs ?? []) {
     if (install?.application_name === BOM_APP_NAME && install.name) return install.name;

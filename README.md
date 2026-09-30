@@ -1,4 +1,4 @@
-# Bureau of Meteorology
+# BoM Station
 
 A Doover processor that records Bureau of Meteorology (BOM) data for one
 location. Every 15 minutes it downloads the newest BOM files from FTP, keeps the
@@ -45,7 +45,7 @@ and a step in `Bom.refresh()`. `ftp.download_latest` fetches the newest file
 for any prefix; `hcs.py` parses the flood-warning (BOM-HCS) format, and `floodmap.py` reads
 flood levels from the map pages.
 
-## BOM Dashboard
+## BoM FWIN Dashboard
 
 A second app in this repo, `bom_dashboard`, gives an area (e.g. a council) one
 page across its gauges. Install it on a Dashboard device and grant it the
@@ -56,7 +56,7 @@ group holding the gauges (extended permissions). Its widget (`widget/`) shows:
 - a card per gauge: level, trend, flood class, the level against its flood
   bands, the last 7 days of level, and rain for the last hour and since 9am.
 
-It reads each device's Bureau of Meteorology install (found by application
+It reads each device's BoM Station install (found by application
 name), so the gauges need no extra setup.
 
 ## Possible future data sources

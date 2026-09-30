@@ -16,6 +16,7 @@ class BomTags(tags.Tags):
     rain_last_hour = tags.Number(default=None)
     rain_since_9am = tags.Number(default=None)
     rain_time = tags.Number(default=None)  # ms since epoch
+    rain_period_s = tags.Number(default=None)  # accumulation period of the rain feed
 
     status = tags.String(default=None)
 
@@ -25,3 +26,5 @@ class BomTags(tags.Tags):
     flood_map_page = tags.String(default=None)
     flood_map_levels = Tag("array", default=[])
     flood_map_checked = tags.String(default=None)
+    # The UI layout last published (see app_ui.layout), to republish on change.
+    ui_layout = tags.String(default=None)

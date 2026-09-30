@@ -39,7 +39,9 @@ const CLASS_STYLES: Record<string, string> = {
   Major: "bg-red-100 text-red-800",
 };
 
-const GAP_MS = 6 * 60 * 60_000;
+// Readings further apart than this are drawn as separate segments. Generous, so
+// a day or two of missing BOM data is bridged rather than left as a hole.
+const GAP_MS = 48 * 60 * 60_000;
 
 const TREND_ARROWS: Record<string, string> = { rising: "↑", falling: "↓", steady: "→" };
 
@@ -118,7 +120,7 @@ function Sparkline({ points, bands, now }: { points: Array<[number, number]>; ba
   const t0 = now - HISTORY_WINDOW_MS;
   const x = (t: number) => ((t - t0) / HISTORY_WINDOW_MS) * w;
   const y = (v: number) => h - 4 - ((v - lo) / (hi - lo)) * (h - 8);
-  // Start a new segment across gaps, so missing data isn't drawn as a straight line.
+  // Start a new segment only across long gaps; shorter ones are bridged.
   const d = points
     .map(([t, v], i) => `${i && t - points[i - 1][0] < GAP_MS ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`)
     .join("");
@@ -237,7 +239,7 @@ function BomDashboardWidgetInner({ uiElement }: WidgetProps) {
   if (!agentId || !appKey) return <Message>The dashboard host did not provide an agent ID and app key.</Message>;
   if (isLoading || (deviceIds.length > 0 && query.isLoading)) return <Message>Loading gauges…</Message>;
   if (!hasDeviceMap) return <Message>Give this dashboard permission to a group of BOM gauges in its app settings.</Message>;
-  if (gauges.length === 0) return <Message>None of the permitted devices run the Bureau of Meteorology app.</Message>;
+  if (gauges.length === 0) return <Message>None of the permitted devices run the BoM Station app.</Message>;
 
   const worst = gauges.reduce<Gauge | null>(
     (w, g) => ((FLOOD_SEVERITY[g.floodClass ?? ""] ?? -1) > (FLOOD_SEVERITY[w?.floodClass ?? ""] ?? -1) ? g : w),

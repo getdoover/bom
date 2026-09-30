@@ -90,9 +90,13 @@ def test_rain_day_rolls_at_9am_local() -> None:
 class FakeApi:
     def __init__(self) -> None:
         self.messages = []
+        self.aggregates = []
 
     async def create_message(self, channel, data, timestamp=None):
         self.messages.append((channel, data, timestamp))
+
+    async def update_channel_aggregate(self, channel, data, replace_keys=None):
+        self.aggregates.append((channel, data))
 
 
 class FakeTag:
@@ -114,7 +118,7 @@ def make_app() -> Bom:
     app.tags = type("Tags", (), {n: FakeTag() for n in (
         "river_level", "river_level_time", "river_trend", "river_datum",
         "river_flood_class", "river_ranges",
-        "rain_15min", "rain_last_hour", "rain_since_9am", "rain_time",
+        "rain_15min", "rain_last_hour", "rain_since_9am", "rain_time", "rain_period_s", "ui_layout",
         "status", "rain_day", "flood_map_page", "flood_map_levels", "flood_map_checked",
     )})()
 
@@ -146,6 +150,16 @@ def test_refresh_records_history_and_totals() -> None:
     # 0.4 + 1.0 end the 29th's rain day; 0.6 starts the 30th's.
     assert history[int(utc("2026-09-29T23:00:00").timestamp() * 1000)]["rain_since_9am"] == 1.4
     assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000)]["rain_since_9am"] == 0.6
+    assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000)]["rain_last_hour"] == 2.0
+
+    # The first readings and flood levels republish the UI: a radial level
+    # gauge and an overview plot of level and 15-minute rain.
+    [(channel, data)] = app.api.aggregates
+    schema = data["state"]["children"]["bom_1"]["children"]
+    assert channel == "ui_state"
+    assert schema["river_level"]["form"] == "radialGauge"
+    assert list(schema["overview"]["series"]) == ["river_level", "rain_15min"]
+    assert schema["overview"]["series"]["river_level"]["ranges"] == "$tag.app().river_ranges:array:[]"
 
     # A second run over the same file writes nothing new.
     app.api.messages.clear()
@@ -156,6 +170,7 @@ def test_refresh_records_history_and_totals() -> None:
         asyncio.run(app.refresh())
     find.assert_not_called()  # already looked up today
     assert app.api.messages == []
+    assert len(app.api.aggregates) == 1  # layout unchanged, so not republished
 
 
 def test_manual_flood_levels_only_when_chosen() -> None:
