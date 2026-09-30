@@ -6,6 +6,7 @@ from bom import handler
 from bom.app_config import BomConfig
 from bom.app_ui import BomUI
 from bom.application import Bom
+from bom.floodmap import parse_levels
 from bom.ftp import latest_file
 from bom.application import flood_ranges
 from bom.hcs import flood_class, level_trend, parse_hcs, rain_day
@@ -54,6 +55,21 @@ def test_flood_class() -> None:
     assert flood_class(3.0, [None, 2.6, None]) == "Moderate"
 
 
+MAP_PAGE = (
+    '<area onmouseover="javascript:PopupRiver(&quot;Kedron Brook at Toombul (Nudgee Rd)&quot;,'
+    "'540548','-27.407','153.074','0.10','Below Flood Level','falling','30-09-2026 16:06:03',"
+    "'2.30','2.80','3.20','Click mouse to display plot')\"/>"
+    '<area onmouseover="javascript:PopupRiver(&quot;No Levels&quot;,'
+    "'999999','-27','153','0.1','No Classification','steady','30-09-2026 16:00:00','','','','x')\"/>"
+)
+
+
+def test_parse_flood_map_levels() -> None:
+    assert parse_levels(MAP_PAGE, "540548") == [2.3, 2.8, 3.2]
+    assert parse_levels(MAP_PAGE, "999999") == [None, None, None]
+    assert parse_levels(MAP_PAGE, "123456") is None
+
+
 def test_flood_ranges() -> None:
     ranges = flood_ranges([1.7, 2.6, 3.5], lowest=-0.56)
     assert [(r["label"], r["min"], r["max"]) for r in ranges] == [
@@ -99,7 +115,7 @@ def make_app() -> Bom:
         "river_level", "river_level_time", "river_trend", "river_datum",
         "river_flood_class", "river_ranges",
         "rain_15min", "rain_last_hour", "rain_since_9am", "rain_time",
-        "status", "rain_day",
+        "status", "rain_day", "flood_map_page", "flood_map_levels", "flood_map_checked",
     )})()
 
     async def ping_connection(**kwargs) -> None:
@@ -111,10 +127,15 @@ def make_app() -> Bom:
 
 def test_refresh_records_history_and_totals() -> None:
     app = make_app()
-    with patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}):
+    with (
+        patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}),
+        patch("bom.application.find_levels", return_value=("IDN65195.html", [1.0, 2.0, 3.0])),
+    ):
         asyncio.run(app.refresh())
 
     assert app.tags.status.value == "OK"
+    assert app.tags.flood_map_page.value == "IDN65195.html"
+    assert app.tags.river_flood_class.value == "Minor"  # 1.05 m vs 1.0 m minor
     assert app.tags.river_level.value == 1.05
     assert app.tags.rain_15min.value == 0.6
     assert app.tags.rain_last_hour.value == 2.0
@@ -128,8 +149,12 @@ def test_refresh_records_history_and_totals() -> None:
 
     # A second run over the same file writes nothing new.
     app.api.messages.clear()
-    with patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}):
+    with (
+        patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}),
+        patch("bom.application.find_levels") as find,
+    ):
         asyncio.run(app.refresh())
+    find.assert_not_called()  # already looked up today
     assert app.api.messages == []
 
 

@@ -40,7 +40,10 @@ RIVER_DEFAULTS = {
     "moderate_flood_level": None,
     "major_flood_level": None,
 }
-FLOOD_HELP = "BOM flood classification level for this gauge, in the gauge's datum (m). Optional."
+FLOOD_HELP = (
+    "Flood classification level in the gauge's datum (m). Leave blank to use the level "
+    "from BOM's flood-warning maps (not available in WA or NT)."
+)
 RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
 
 

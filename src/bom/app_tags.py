@@ -19,5 +19,9 @@ class BomTags(tags.Tags):
 
     status = tags.String(default=None)
 
-    # Bookkeeping: the 9am rain day that rain_since_9am belongs to.
+    # Bookkeeping: the 9am rain day that rain_since_9am belongs to, and the
+    # flood levels looked up from BOM's map pages (re-checked once a day).
     rain_day = tags.String(default=None)
+    flood_map_page = tags.String(default=None)
+    flood_map_levels = Tag("array", default=[])
+    flood_map_checked = tags.String(default=None)

@@ -14,6 +14,7 @@ from pydoover.tags.manager import LogMode
 from .app_config import STATES, BomConfig
 from .app_tags import BomTags
 from .app_ui import BomUI
+from .floodmap import find_levels
 from .ftp import download_latest
 from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
 
@@ -118,7 +119,8 @@ class Bom(Application):
             rains = [r for r in rains if (r.period_s or 0) == finest]
 
         history: dict[int, dict] = defaultdict(dict)
-        await self.update_river(levels, history)
+        if river_id:
+            await self.update_river(levels, await self.flood_levels(river_id, letter), history)
         await self.update_rain(rains, utc_offset, history)
 
         for ts in sorted(history):
@@ -143,7 +145,37 @@ class Bom(Application):
                 + timedelta(minutes=self.config.offline_after_minutes.value),
             )
 
-    async def update_river(self, levels: list[Reading], history: dict) -> None:
+    async def flood_levels(self, river_id: str, letter: str) -> list[float | None]:
+        """Configured flood levels, with any left blank taken from BOM's flood maps."""
+        river = self.config.river
+        configured = [
+            river.minor_flood_level.value,
+            river.moderate_flood_level.value,
+            river.major_flood_level.value,
+        ]
+        if None not in configured:
+            return configured
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        if self.tags.flood_map_checked.value != today:
+            try:
+                found = await asyncio.to_thread(
+                    find_levels, river_id, letter, self.tags.flood_map_page.value
+                )
+            except Exception:
+                log.exception("BOM flood map lookup failed")
+            else:
+                page, bom_levels = found or (None, [])
+                await self.tags.flood_map_page.set(page)
+                await self.tags.flood_map_levels.set(bom_levels)
+                await self.tags.flood_map_checked.set(today)
+
+        bom_levels = self.tags.flood_map_levels.value or [None, None, None]
+        return [c if c is not None else b for c, b in zip(configured, bom_levels)]
+
+    async def update_river(
+        self, levels: list[Reading], flood_levels: list[float | None], history: dict
+    ) -> None:
         if not levels:
             return
         last_ms = self.tags.river_level_time.value or 0
@@ -158,12 +190,6 @@ class Bom(Application):
             await self.tags.river_datum.set(latest.datum)
             await self.tags.river_trend.set(level_trend(levels))
 
-        river = self.config.river
-        flood_levels = [
-            river.minor_flood_level.value,
-            river.moderate_flood_level.value,
-            river.major_flood_level.value,
-        ]
         await self.tags.river_flood_class.set(flood_class(latest.value, flood_levels))
         await self.tags.river_ranges.set(
             flood_ranges(flood_levels, min(r.value for r in levels))
