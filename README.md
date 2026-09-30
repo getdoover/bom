@@ -45,6 +45,20 @@ and a step in `Bom.refresh()`. `ftp.download_latest` fetches the newest file
 for any prefix; `hcs.py` parses the flood-warning (BOM-HCS) format, and `floodmap.py` reads
 flood levels from the map pages.
 
+## Possible future data sources
+
+Also on BOM's public FTP feed (`/anon/gen/fwo`), not yet used here:
+
+| Data | Files | Would add |
+| --- | --- | --- |
+| Town forecasts | `IDx11xxx.xml` / `IDx10xxx.xml` precis forecasts (e.g. `IDQ11295`, `IDN11060`) | 7-day min/max, chance of rain, rain range, summary text |
+| Warnings | `IDx2xxxx.cap.xml` (CAP format) | Flood, severe thunderstorm and wind warnings for the area; notifications when issued |
+| Weather station observations | `IDx60920.xml` | Temperature, humidity, wind, pressure every ~10 min |
+| Rain and level history | Water Data Online SOS2 API (HTTPS) | Years of history to backfill a new device |
+
+A notification when a gauge's flood class changes would build on the existing
+River Level data.
+
 ## Development
 
 ```bash
