@@ -9,11 +9,13 @@ observation time.
 
 | Section | Values | BOM files (public feed) |
 | --- | --- | --- |
-| River Level | Level (m), trend, datum (`AHD` or `LGH` local gauge height) | `IDx65911` (15-min readings, last ~3 h) + `IDx65910` (latest) |
+| River Level | Level (m), trend, flood class, datum (`AHD` or `LGH` local gauge height) | `IDx65911` (15-min readings, last ~3 h) + `IDx65910` (latest) |
 | Rainfall | Last 15 min, last hour, since 9am (mm) | `IDx65900` (15-min totals, last ~2 h) |
 
 Each section takes a BOM station number (e.g. `068212`); leave it blank to skip
-that source. Many sites use the same number for both. **State** picks the
+that source. Many sites use the same number for both. River Level also takes the
+gauge's optional minor / moderate / major flood levels (from BOM's flood-warning
+maps), which drive the flood class and the level gauge's colour bands. **State** picks the
 state's files (`x` above) and the 9am rain-day time zone.
 
 **FTP Server** defaults to BOM's public feed (`ftp.bom.gov.au`,

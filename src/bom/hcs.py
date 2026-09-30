@@ -62,6 +62,16 @@ def level_trend(levels: list[Reading], threshold_m: float = 0.01) -> str | None:
     return "steady"
 
 
+def flood_class(level: float, levels: list[float | None]) -> str | None:
+    """Minor / Moderate / Major, from (minor, moderate, major) flood levels."""
+    names = ("Minor", "Moderate", "Major")
+    set_levels = [(n, v) for n, v in zip(names, levels) if v is not None]
+    if not set_levels:
+        return None
+    reached = [n for n, v in set_levels if level >= v]
+    return reached[-1] if reached else "Below flood level"
+
+
 def rain_day(time: datetime, utc_offset_hours: float) -> str:
     """The BOM rain day (9am to 9am local standard time) a reading falls in.
 

@@ -1,6 +1,7 @@
 """Current values shown in the UI, plus the bookkeeping kept between runs."""
 
 from pydoover import tags
+from pydoover.tags import Tag
 
 
 class BomTags(tags.Tags):
@@ -8,6 +9,8 @@ class BomTags(tags.Tags):
     river_level_time = tags.Number(default=None)  # ms since epoch
     river_trend = tags.String(default=None)
     river_datum = tags.String(default=None)
+    river_flood_class = tags.String(default=None)
+    river_ranges = Tag("array", default=[])  # flood bands, from config
 
     rain_15min = tags.Number(default=None)
     rain_last_hour = tags.Number(default=None)

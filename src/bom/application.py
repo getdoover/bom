@@ -2,10 +2,12 @@
 
 import asyncio
 import logging
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from pydoover.models import DeploymentEvent, ManualInvokeEvent, ScheduleEvent
+from pydoover import ui
 from pydoover.processor import Application
 from pydoover.tags.manager import LogMode
 
@@ -13,13 +15,35 @@ from .app_config import STATES, BomConfig
 from .app_tags import BomTags
 from .app_ui import BomUI
 from .ftp import download_latest
-from .hcs import Reading, level_trend, parse_hcs, rain_day, unique_readings
+from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
 
 log = logging.getLogger(__name__)
 
 
 def to_ms(t: datetime) -> int:
     return int(t.timestamp() * 1000)
+
+
+def flood_ranges(levels: list[float | None], lowest: float) -> list[dict]:
+    """Gauge bands from (minor, moderate, major) flood levels; empty if none are set."""
+    bands = [
+        (name, v, colour)
+        for name, v, colour in zip(
+            ("Minor", "Moderate", "Major"),
+            levels,
+            (ui.Colour.yellow, ui.Colour.orange, ui.Colour.red),
+        )
+        if v is not None
+    ]
+    if not bands:
+        return []
+    lower = min(0, math.floor(lowest))
+    ranges = [ui.Range("Below flood level", lower, bands[0][1], ui.Colour.green)]
+    for i, (name, start, colour) in enumerate(bands):
+        prev = bands[i - 1][1] if i else lower
+        end = bands[i + 1][1] if i + 1 < len(bands) else start + max(1.0, start - prev)
+        ranges.append(ui.Range(name, start, end, colour))
+    return [r.to_dict() for r in ranges]
 
 
 def split_prefixes(value: str, letter: str) -> list[str]:
@@ -130,6 +154,17 @@ class Bom(Application):
             await self.tags.river_level_time.set(to_ms(latest.time))
             await self.tags.river_datum.set(latest.datum)
             await self.tags.river_trend.set(level_trend(levels))
+
+        river = self.config.river
+        flood_levels = [
+            river.minor_flood_level.value,
+            river.moderate_flood_level.value,
+            river.major_flood_level.value,
+        ]
+        await self.tags.river_flood_class.set(flood_class(latest.value, flood_levels))
+        await self.tags.river_ranges.set(
+            flood_ranges(flood_levels, min(r.value for r in levels))
+        )
 
     async def update_rain(
         self, rains: list[Reading], utc_offset: float, history: dict

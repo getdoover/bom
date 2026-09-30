@@ -7,7 +7,8 @@ from bom.app_config import BomConfig
 from bom.app_ui import BomUI
 from bom.application import Bom
 from bom.ftp import latest_file
-from bom.hcs import level_trend, parse_hcs, rain_day
+from bom.application import flood_ranges
+from bom.hcs import flood_class, level_trend, parse_hcs, rain_day
 
 HCS = """# HEADER: File Format: BOM-HCS
 # HEADER: Data Fields: IndexNo, SensorType, SensorDataType, SiteIdType, SiteId, ObservationTimestamp, RealValue, Unit, SensorParam1, SensorParam2, Quality, Comment
@@ -44,6 +45,26 @@ def test_level_trend() -> None:
     assert level_trend(levels[:1]) is None
 
 
+def test_flood_class() -> None:
+    levels = [1.7, 2.6, 3.5]
+    assert flood_class(1.0, levels) == "Below flood level"
+    assert flood_class(2.6, levels) == "Moderate"
+    assert flood_class(9.0, levels) == "Major"
+    assert flood_class(9.0, [None, None, None]) is None
+    assert flood_class(3.0, [None, 2.6, None]) == "Moderate"
+
+
+def test_flood_ranges() -> None:
+    ranges = flood_ranges([1.7, 2.6, 3.5], lowest=-0.56)
+    assert [(r["label"], r["min"], r["max"]) for r in ranges] == [
+        ("Below flood level", -1, 1.7),
+        ("Minor", 1.7, 2.6),
+        ("Moderate", 2.6, 3.5),
+        ("Major", 3.5, 4.5),
+    ]
+    assert flood_ranges([None, None, None], lowest=0) == []
+
+
 def test_rain_day_rolls_at_9am_local() -> None:
     # 23:00Z = 09:00 AEST, which closes the day that started 9am the day before.
     assert rain_day(utc("2026-09-29T23:00:00"), 10) == "2026-09-29"
@@ -76,6 +97,7 @@ def make_app() -> Bom:
     app.api = FakeApi()
     app.tags = type("Tags", (), {n: FakeTag() for n in (
         "river_level", "river_level_time", "river_trend", "river_datum",
+        "river_flood_class", "river_ranges",
         "rain_15min", "rain_last_hour", "rain_since_9am", "rain_time",
         "status", "rain_day",
     )})()

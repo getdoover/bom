@@ -30,7 +30,14 @@ FTP_DEFAULTS = {
     "password": "",
     "directory": "/anon/gen/fwo",
 }
-RIVER_DEFAULTS = {"station_id": "", "files": "ID{state}65911,ID{state}65910"}
+RIVER_DEFAULTS = {
+    "station_id": "",
+    "files": "ID{state}65911,ID{state}65910",
+    "minor_flood_level": None,
+    "moderate_flood_level": None,
+    "major_flood_level": None,
+}
+FLOOD_HELP = "BOM flood classification level for this gauge, in the gauge's datum (m). Optional."
 RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
 
 
@@ -50,6 +57,11 @@ class RiverLevelSettings(config.Object):
         description="BOM river gauge number, e.g. 068212. Leave blank to skip.",
     )
     files = config.String("Files", default=RIVER_DEFAULTS["files"], description=FILES_HELP)
+    minor_flood_level = config.Number("Minor Flood Level", default=None, description=FLOOD_HELP)
+    moderate_flood_level = config.Number(
+        "Moderate Flood Level", default=None, description=FLOOD_HELP
+    )
+    major_flood_level = config.Number("Major Flood Level", default=None, description=FLOOD_HELP)
 
 
 class RainfallSettings(config.Object):
