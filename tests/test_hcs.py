@@ -107,7 +107,7 @@ def make_app() -> Bom:
     app = Bom()
     app.config = BomConfig()
     app.config._inject_deployment_config(
-        {"river_level": {"station_id": "068212"}, "rainfall": {"station_id": "068212"}}
+        {"state": "NSW / ACT", "river_level": {"station_id": "068212"}, "rainfall": {"station_id": "068212"}}
     )
     app.app_key = "bom_1"
     app.api = FakeApi()
@@ -162,12 +162,14 @@ def test_manual_flood_levels_only_when_chosen() -> None:
     app = make_app()
     levels = {"minor_flood_level": 1.0, "moderate_flood_level": 2.0, "major_flood_level": 3.0}
     with patch("bom.application.find_levels", return_value=("IDN65195.html", [5.0, 6.0, 7.0])):
-        app.config._inject_deployment_config({"river_level": {"station_id": "068212", **levels}})
+        app.config._inject_deployment_config(
+            {"state": "NSW / ACT", "river_level": {"station_id": "068212", **levels}}
+        )
         assert asyncio.run(app.flood_levels("068212", "N")) == [5.0, 6.0, 7.0]
 
         app = make_app()
         app.config._inject_deployment_config(
-            {"river_level": {"station_id": "068212", "flood_levels": "Manual", **levels}}
+            {"state": "NSW / ACT", "river_level": {"station_id": "068212", "flood_levels": "Manual", **levels}}
         )
         assert asyncio.run(app.flood_levels("068212", "N")) == [1.0, 2.0, 3.0]
 

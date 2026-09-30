@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from pydoover import config
+from pydoover.config import NotSet
 from pydoover.processor import ScheduleConfig
 
 # State -> (BOM product letter, UTC offset of local standard time). BOM rain
@@ -118,7 +119,7 @@ class BomConfig(config.Schema):
     state = config.Enum(
         "State",
         choices=list(STATES),
-        default="NSW / ACT",
+        default=NotSet,
         description="Selects the state's BOM files and the 9am rain-day time zone.",
     )
     river = RiverLevelSettings("River Level", default=RIVER_DEFAULTS)
