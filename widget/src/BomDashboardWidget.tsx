@@ -85,9 +85,13 @@ function FloodBar({ bands, level }: { bands: FloodBand[]; level: number | null }
           />
         )}
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-muted-foreground tabular-nums">
-        {bands.slice(1).map((b) => (
-          <span key={b.label}>
+      <div className="relative mt-1 h-3.5 text-[10px] text-muted-foreground tabular-nums">
+        {bands.slice(1).map((b, i, rest) => (
+          <span
+            key={b.label}
+            className={`absolute whitespace-nowrap ${i === rest.length - 1 ? "-translate-x-full" : "-translate-x-1/2"}`}
+            style={{ left: i === rest.length - 1 ? "100%" : pct(b.min) }}
+          >
             {b.label} {b.min} m
           </span>
         ))}
@@ -230,7 +234,7 @@ function BomDashboardWidgetInner({ uiElement }: WidgetProps) {
 
   return (
     <section className="flex flex-col gap-4 text-sm" aria-label="River and rain overview">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
         <Summary
           label="Flood status"
           value={!worst || (FLOOD_SEVERITY[worst.floodClass ?? ""] ?? 0) === 0 ? "No flooding" : `${worst.floodClass} flood`}
@@ -252,7 +256,7 @@ function BomDashboardWidgetInner({ uiElement }: WidgetProps) {
           detail={reporting.length === gauges.length ? "All gauges current" : "Some gauges silent for 2 h+"}
         />
       </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
         {gauges.map((g) => (
           <GaugeCard key={g.id} g={g} now={now} />
         ))}
