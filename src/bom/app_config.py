@@ -25,9 +25,12 @@ FILES_HELP = (
 # Optional Objects only load their fields' defaults from the Object's own
 # default, so each section's defaults are spelled out here as well.
 FTP_DEFAULTS = {
+    "protocol": "FTP",
     "host": "ftp.bom.gov.au",
+    "port": None,
     "username": "anonymous",
     "password": "",
+    "private_key": "",
     "directory": "/anon/gen/fwo",
 }
 RIVER_DEFAULTS = {
@@ -42,10 +45,24 @@ RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
 
 
 class FtpSettings(config.Object):
+    protocol = config.Enum(
+        "Protocol",
+        choices=["FTP", "SFTP"],
+        default=FTP_DEFAULTS["protocol"],
+        description="FTP for ftp.bom.gov.au; SFTP (SSH key) for sftp-reg.cloud.bom.gov.au.",
+    )
     host = config.String("Host", default=FTP_DEFAULTS["host"])
+    port = config.Integer(
+        "Port", default=None, description="Leave blank for the default (FTP 21, SFTP 22)."
+    )
     username = config.String("Username", default=FTP_DEFAULTS["username"])
     password = config.String(
-        "Password", default="", description="Leave blank for anonymous access."
+        "Password", default="", description="FTP only. Leave blank for anonymous access."
+    )
+    private_key = config.String(
+        "Private Key",
+        default="",
+        description="SFTP only. The SSH private key (PEM or OpenSSH format) registered with BOM.",
     )
     directory = config.String("Directory", default=FTP_DEFAULTS["directory"])
 
@@ -56,7 +73,9 @@ class RiverLevelSettings(config.Object):
         default="",
         description="BOM river gauge number, e.g. 068212. Leave blank to skip.",
     )
-    files = config.String("Files", default=RIVER_DEFAULTS["files"], description=FILES_HELP)
+    files = config.String(
+        "Files", default=RIVER_DEFAULTS["files"], description=FILES_HELP, advanced=True
+    )
     minor_flood_level = config.Number("Minor Flood Level", default=None, description=FLOOD_HELP)
     moderate_flood_level = config.Number(
         "Moderate Flood Level", default=None, description=FLOOD_HELP
@@ -74,6 +93,7 @@ class RainfallSettings(config.Object):
         "Files",
         default=RAIN_DEFAULTS["files"],
         description=FILES_HELP + " Files must hold rainfall totals (e.g. 15-minute).",
+        advanced=True,
     )
 
 
@@ -90,15 +110,19 @@ class BomConfig(config.Schema):
         "FTP Server",
         default=FTP_DEFAULTS,
         description="Defaults are BOM's public feed (15-minute data). Change for a Registered User feed.",
+        advanced=True,
     )
     offline_after_minutes = config.Number(
         "Offline After (minutes)",
         default=120.0,
         minimum=15.0,
         description="Show the device offline if BOM has no new reading for this long.",
+        advanced=True,
     )
 
-    schedule = ScheduleConfig(allowed_modes=["rate", "cron"], default="rate(15 minutes)")
+    schedule = ScheduleConfig(
+        allowed_modes=["rate", "cron"], default="rate(15 minutes)", advanced=True
+    )
     position = config.ApplicationPosition()
     default_open = config.ApplicationDefaultOpen()
 

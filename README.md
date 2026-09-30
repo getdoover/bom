@@ -18,9 +18,17 @@ gauge's optional minor / moderate / major flood levels (from BOM's flood-warning
 maps), which drive the flood class and the level gauge's colour bands. **State** picks the
 state's files (`x` above) and the 9am rain-day time zone.
 
-**FTP Server** defaults to BOM's public feed (`ftp.bom.gov.au`,
-`/anon/gen/fwo`). For a Registered User (5-minute) feed, set the host and login,
-and each section's file prefixes.
+**FTP Server** (advanced) defaults to BOM's public feed (`ftp.bom.gov.au`,
+`/anon/gen/fwo`). For a Registered User (5-minute) feed:
+
+| BOM service | Protocol | Login | Supported |
+| --- | --- | --- | --- |
+| Plain FTP, `ftp.bom.gov.au` | FTP | User ID + password | Yes |
+| Cloud-SFTP, `sftp-reg.cloud.bom.gov.au` | SFTP | User ID + SSH private key | Yes |
+| Cloud-FTP, `ftp-reg.cloud.bom.gov.au` | FTP | User ID + password + whitelisted IP | No: processors run on Lambda, which has no fixed outbound IP |
+
+Set the directory and each section's file prefixes to match the feed. SFTP
+accepts the server's host key on first connect (no key is pinned).
 
 BOM keeps only a few hours of files, so a gap longer than that (e.g. the
 processor disabled) is not backfilled, and the since-9am total undercounts for

@@ -96,6 +96,9 @@ class Bom(Application):
                 ftp.password.value,
                 ftp.directory.value,
                 prefixes,
+                protocol=ftp.protocol.value,
+                port=ftp.port.value,
+                private_key=ftp.private_key.value,
             )
         except Exception as e:
             log.exception("BOM fetch failed")

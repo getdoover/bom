@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Doover processor recording Bureau of Meteorology data for a location"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["pydoover>=1.18.2"]
+dependencies = ["pydoover>=1.18.2", "paramiko>=3.5"]
 
 [project.scripts]
 export-config = "bom.app_config:export"
