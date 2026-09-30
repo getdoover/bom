@@ -1,0 +1,23 @@
+{
+    "bom": {
+        "name": "bom",
+        "display_name": "Bureau of Meteorology",
+        "type": "PRO",
+        "visibility": "PUB",
+        "allow_many": false,
+        "description": "Records Bureau of Meteorology data for a location. Currently river level and rainfall from the flood-warning feed.",
+        "long_description": "README.md",
+        "depends_on": [],
+        "organisation_id": null,
+        "lambda_config": {
+            "Environment": {},
+            "Runtime": "python3.13",
+            "Timeout": 120,
+            "Handler": "src.bom.handler",
+            "MemorySize": 256,
+            "Architectures": [
+                "arm64"
+            ]
+        }
+    }
+}
