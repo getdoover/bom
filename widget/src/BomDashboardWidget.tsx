@@ -194,12 +194,23 @@ function BomDashboardWidgetInner({ uiElement }: WidgetProps) {
     () => [...new Set(devices.map((d) => bomAppKey(d, aggregatesByAgent[d.id]?.data)).filter(Boolean))] as string[],
     [devices, aggregatesByAgent],
   );
-  // Fixed per mount, so the history query key doesn't change every minute.
-  const [after] = useState(() => generateSnowflakeIdAtTime(Date.now() - HISTORY_WINDOW_MS));
+  // Fixed per mount, so the history query key doesn't change every minute. Both
+  // ends are given so doover-js splits the range into windows the server accepts.
+  const [range] = useState(() => ({
+    after: generateSnowflakeIdAtTime(Date.now() - HISTORY_WINDOW_MS),
+    before: generateSnowflakeIdAtTime(Date.now() + 60_000),
+  }));
   const { messages } = useMultiAgentChannelMessages<Record<string, Record<string, unknown>>>(
     "tag_values",
     deviceIds,
-    { fields: bomKeys, after, agentMessageLimit: 1000, autoPaginate: true, maxPages: 12 },
+    {
+      fields: bomKeys,
+      after: range.after,
+      initialBefore: range.before,
+      agentMessageLimit: 1000,
+      autoPaginate: true,
+      maxPages: 12,
+    },
   );
 
   const gauges = useMemo(() => {
