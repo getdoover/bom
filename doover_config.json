@@ -19,5 +19,29 @@
                 "arm64"
             ]
         }
+    },
+    "bom_dashboard": {
+        "name": "bom_dashboard",
+        "display_name": "BOM Dashboard",
+        "type": "PRO",
+        "visibility": "PUB",
+        "allow_many": false,
+        "description": "Council or area overview of Bureau of Meteorology river and rain gauges: flood status, rising rivers, rainfall and 24-hour level history.",
+        "long_description": "README.md",
+        "depends_on": [],
+        "export_config_command": "export-config-dashboard",
+        "export_ui_command": "export-ui-dashboard",
+        "build_widget_command": "npm --prefix widget ci && npm --prefix widget run build",
+        "widget": "widget/assets/BomDashboardWidget.js",
+        "lambda_config": {
+            "Environment": {},
+            "Runtime": "python3.13",
+            "Timeout": 60,
+            "Handler": "src.bom_dashboard.handler",
+            "MemorySize": 128,
+            "Architectures": [
+                "arm64"
+            ]
+        }
     }
 }

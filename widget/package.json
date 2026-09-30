@@ -1,0 +1,30 @@
+{
+  "name": "bom-dashboard-widget",
+  "version": "1.0.0",
+  "description": "Council dashboard for Bureau of Meteorology river and rain gauges on Doover.",
+  "private": true,
+  "scripts": {
+    "build": "rsbuild build",
+    "check": "tsc --noEmit",
+    "watch": "rsbuild build --watch --mode development"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@module-federation/enhanced": "^0.21.6",
+    "@module-federation/rsbuild-plugin": "^0.21.6",
+    "@rsbuild/core": "^1.6.14",
+    "@rsbuild/plugin-react": "^1.4.2",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@tanstack/react-query": "^5.90.2",
+    "doover-js": "^0.14.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router": "^7.7.0",
+    "tailwindcss": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "typescript": "^5.8.3"
+  }
+}

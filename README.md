@@ -45,6 +45,20 @@ and a step in `Bom.refresh()`. `ftp.download_latest` fetches the newest file
 for any prefix; `hcs.py` parses the flood-warning (BOM-HCS) format, and `floodmap.py` reads
 flood levels from the map pages.
 
+## BOM Dashboard
+
+A second app in this repo, `bom_dashboard`, gives an area (e.g. a council) one
+page across its gauges. Install it on a Dashboard device and grant it the
+group holding the gauges (extended permissions). Its widget (`widget/`) shows:
+
+- flood status (worst flood class across the gauges), rivers rising, the
+  wettest gauge since 9am, and how many gauges are reporting;
+- a card per gauge: level, trend, flood class, the level against its flood
+  bands, the last 24 h of level, and rain for the last hour and since 9am.
+
+It reads each device's Bureau of Meteorology install (found by application
+name), so the gauges need no extra setup.
+
 ## Possible future data sources
 
 Also on BOM's public FTP feed (`/anon/gen/fwo`), not yet used here:
