@@ -3,7 +3,7 @@ import type { DeviceMapEntry } from "doover-js/react";
 export const BOM_APP_NAME = "bom";
 // A gauge is "reporting" if BOM has published a reading within this window.
 export const REPORTING_WINDOW_MS = 2 * 60 * 60_000;
-export const HISTORY_WINDOW_MS = 24 * 60 * 60_000;
+export const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60_000;
 
 export interface GaugeDevice extends DeviceMapEntry {
   group?: { name?: string | null } | null;

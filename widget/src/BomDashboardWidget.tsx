@@ -99,7 +99,7 @@ function FloodBar({ bands, level }: { bands: FloodBand[]; level: number | null }
   );
 }
 
-/** Last 24 h of river level, with the minor flood level drawn if it is in view. */
+/** Last 7 days of river level, with the minor flood level drawn if it is in view. */
 function Sparkline({ points, bands, now }: { points: Array<[number, number]>; bands: FloodBand[]; now: number }) {
   const w = 280;
   const h = 56;
@@ -119,7 +119,7 @@ function Sparkline({ points, bands, now }: { points: Array<[number, number]>; ba
   const d = points.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join("");
   const minor = bands[1]?.min;
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-14 w-full" preserveAspectRatio="none" role="img" aria-label="River level, last 24 hours">
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-14 w-full" preserveAspectRatio="none" role="img" aria-label="River level, last 7 days">
       {minor != null && minor >= lo && minor <= hi && (
         <line x1={0} x2={w} y1={y(minor)} y2={y(minor)} stroke="#eab308" strokeDasharray="4 3" strokeWidth={1} />
       )}
@@ -199,7 +199,7 @@ function BomDashboardWidgetInner({ uiElement }: WidgetProps) {
   const { messages } = useMultiAgentChannelMessages<Record<string, Record<string, unknown>>>(
     "tag_values",
     deviceIds,
-    { fields: bomKeys, after, agentMessageLimit: 500, autoPaginate: true, maxPages: 10 },
+    { fields: bomKeys, after, agentMessageLimit: 1000, autoPaginate: true, maxPages: 12 },
   );
 
   const gauges = useMemo(() => {
