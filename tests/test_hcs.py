@@ -158,6 +158,20 @@ def test_refresh_records_history_and_totals() -> None:
     assert app.api.messages == []
 
 
+def test_manual_flood_levels_only_when_chosen() -> None:
+    app = make_app()
+    levels = {"minor_flood_level": 1.0, "moderate_flood_level": 2.0, "major_flood_level": 3.0}
+    with patch("bom.application.find_levels", return_value=("IDN65195.html", [5.0, 6.0, 7.0])):
+        app.config._inject_deployment_config({"river_level": {"station_id": "068212", **levels}})
+        assert asyncio.run(app.flood_levels("068212", "N")) == [5.0, 6.0, 7.0]
+
+        app = make_app()
+        app.config._inject_deployment_config(
+            {"river_level": {"station_id": "068212", "flood_levels": "Manual", **levels}}
+        )
+        assert asyncio.run(app.flood_levels("068212", "N")) == [1.0, 2.0, 3.0]
+
+
 def test_schemas_and_entry_point() -> None:
     assert "ftp_server" in BomConfig.to_schema()["properties"]
     assert isinstance(BomUI(None, None, None).to_schema(), dict)

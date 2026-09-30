@@ -36,14 +36,12 @@ FTP_DEFAULTS = {
 RIVER_DEFAULTS = {
     "station_id": "",
     "files": "ID{state}65911,ID{state}65910",
+    "flood_levels": "BOM flood maps",
     "minor_flood_level": None,
     "moderate_flood_level": None,
     "major_flood_level": None,
 }
-FLOOD_HELP = (
-    "Flood classification level in the gauge's datum (m). Leave blank to use the level "
-    "from BOM's flood-warning maps (not available in WA or NT)."
-)
+FLOOD_HELP = "Flood classification level in the gauge's datum (m)."
 RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
 
 
@@ -70,6 +68,9 @@ class FtpSettings(config.Object):
     directory = config.String("Directory", default=FTP_DEFAULTS["directory"])
 
 
+manual = config.equal("flood_levels", "Manual")
+
+
 class RiverLevelSettings(config.Object):
     station_id = config.String(
         "Station ID",
@@ -79,11 +80,24 @@ class RiverLevelSettings(config.Object):
     files = config.String(
         "Files", default=RIVER_DEFAULTS["files"], description=FILES_HELP, advanced=True
     )
-    minor_flood_level = config.Number("Minor Flood Level", default=None, description=FLOOD_HELP)
-    moderate_flood_level = config.Number(
-        "Moderate Flood Level", default=None, description=FLOOD_HELP
+    flood_levels = config.Enum(
+        "Flood Levels",
+        choices=["BOM flood maps", "Manual"],
+        default=RIVER_DEFAULTS["flood_levels"],
+        description=(
+            "Where the minor / moderate / major flood levels come from. BOM has no river "
+            "flood maps for WA or NT, so choose Manual there."
+        ),
     )
-    major_flood_level = config.Number("Major Flood Level", default=None, description=FLOOD_HELP)
+    minor_flood_level = config.Number(
+        "Minor Flood Level", default=None, description=FLOOD_HELP, show_if=manual
+    )
+    moderate_flood_level = config.Number(
+        "Moderate Flood Level", default=None, description=FLOOD_HELP, show_if=manual
+    )
+    major_flood_level = config.Number(
+        "Major Flood Level", default=None, description=FLOOD_HELP, show_if=manual
+    )
 
 
 class RainfallSettings(config.Object):

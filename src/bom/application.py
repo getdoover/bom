@@ -146,13 +146,15 @@ class Bom(Application):
             )
 
     async def flood_levels(self, river_id: str, letter: str) -> list[float | None]:
-        """Configured flood levels, with any left blank taken from BOM's flood maps."""
+        """Manual flood levels, with any not given taken from BOM's flood maps."""
         river = self.config.river
-        configured = [
-            river.minor_flood_level.value,
-            river.moderate_flood_level.value,
-            river.major_flood_level.value,
-        ]
+        configured = [None, None, None]
+        if river.flood_levels.value == "Manual":
+            configured = [
+                river.minor_flood_level.value,
+                river.moderate_flood_level.value,
+                river.major_flood_level.value,
+            ]
         if None not in configured:
             return configured
 
