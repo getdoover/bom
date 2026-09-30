@@ -87,13 +87,10 @@ function FloodBar({ bands, level }: { bands: FloodBand[]; level: number | null }
           />
         )}
       </div>
-      <div className="relative mt-1 h-3.5 text-[10px] text-muted-foreground tabular-nums">
-        {bands.slice(1).map((b, i, rest) => (
-          <span
-            key={b.label}
-            className={`absolute whitespace-nowrap ${i === rest.length - 1 ? "-translate-x-full" : "-translate-x-1/2"}`}
-            style={{ left: i === rest.length - 1 ? "100%" : pct(b.min) }}
-          >
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground tabular-nums">
+        {bands.slice(1).map((b) => (
+          <span key={b.label} className="inline-flex items-center gap-1 whitespace-nowrap">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: b.colour }} />
             {b.label} {b.min} m
           </span>
         ))}
