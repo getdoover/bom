@@ -2,6 +2,8 @@ import "./styles.css";
 
 import { useEffect, useMemo, useState } from "react";
 
+import { Link } from "react-router";
+
 import RemoteComponentWrapper from "customer_site/RemoteComponentWrapper";
 import { useRemoteParams } from "customer_site/useRemoteParams";
 import { generateSnowflakeIdAtTime } from "doover-js";
@@ -132,8 +134,8 @@ function Sparkline({ points, bands, now }: { points: Array<[number, number]>; ba
 function GaugeCard({ g, now }: { g: Gauge; now: number }) {
   const reporting = isReporting(g, now);
   return (
-    <a
-      href={`/agent/${g.id}`}
+    <Link
+      to={`/agent/${g.id}`}
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-inherit no-underline hover:shadow-sm"
     >
       <div className="flex items-start justify-between gap-2">
@@ -174,7 +176,7 @@ function GaugeCard({ g, now }: { g: Gauge; now: number }) {
           <div className="tabular-nums">{fmt(g.rain9am, 1, " mm")}</div>
         </div>
       </div>
-    </a>
+    </Link>
   );
 }
 
