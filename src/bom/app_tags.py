@@ -12,6 +12,7 @@ class BomTags(tags.Tags):
     river_flood_class = tags.String(default=None)
     river_ranges = Tag("array", default=[])  # flood bands, from config
     river_flow = tags.Number(default=None)  # in river_flow_units
+    river_flow_cumec = tags.Number(default=None)  # the same reading as published, m³/s
     river_flow_units = tags.String(default=None)
     river_flow_time = tags.Number(default=None)  # ms since epoch
     river_flow_ranges = Tag("array", default=[])  # bands, in river_flow_units

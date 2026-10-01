@@ -128,7 +128,7 @@ def make_app() -> Bom:
     app.api = FakeApi()
     app.tags = type("Tags", (), {n: FakeTag() for n in (
         "river_level", "river_level_time", "river_trend", "river_datum",
-        "river_flood_class", "river_ranges", "river_flow", "river_flow_units", "river_flow_time",
+        "river_flood_class", "river_ranges", "river_flow", "river_flow_cumec", "river_flow_units", "river_flow_time",
         "river_flow_ranges", "flow_stats", "flow_stats_checked",
         "rain_15min", "rain_last_hour", "rain_since_9am", "rain_time", "rain_period_s", "ui_layout",
         "weather_temp", "weather_apparent_temp", "weather_dew_point", "weather_humidity",
@@ -189,7 +189,7 @@ def test_refresh_records_history_and_totals(gauge_record) -> None:
     assert [(b["label"], b["min"]) for b in app.tags.river_flow_ranges.value] == [
         ("Low", 0), ("Normal", 201.0 * 86.4), ("High", 1800.0 * 86.4), ("Very High", 1980.0 * 86.4), ("Minor Flood", 1992.5 * 86.4)
     ]
-    assert app.tags.flow_stats_checked.value == datetime.now(timezone.utc).strftime("%Y-%m")
+    assert app.tags.flow_stats_checked.value == datetime.now(timezone.utc).strftime("%Y-%m") + "/2"
 
     assert app.tags.status.value == "OK"
     assert app.tags.weather_station.value == "MOREE AERO"
@@ -460,3 +460,23 @@ def test_record_fetch_failure_keeps_old_bands_and_retries_tomorrow(gauge_record)
     assert app.tags.status.value == "OK"  # the flow itself still arrived
     assert app.tags.flow_stats.value == {"max": 10.0}
     assert app.tags.flow_stats_checked.value == f"fail:{datetime.now(timezone.utc).date()}"
+
+
+def test_changing_units_reconverts_the_current_flow_without_a_new_point() -> None:
+    app = make_app()
+    app.config._inject_deployment_config(
+        {"state": "NSW / ACT", "river_level": {"station_id": "068212"}, "river_flow": {"station_id": "418001"}}
+    )
+    # Recorded earlier in m³/s; the latest point is already known.
+    app.tags.river_flow_cumec.value = 22.507
+    app.tags.river_flow.value = 22.507
+    app.tags.river_flow_time.value = int(utc("2026-09-29T12:00:00").timestamp() * 1000)
+    with (
+        patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}),
+        patch("bom.application.find_levels", return_value=("IDN65195.html", [1.0, 2.0, 3.0])),
+        patch("bom.application.fetch_discharge", return_value=FLOWS),  # nothing newer
+    ):
+        asyncio.run(app.refresh())
+    assert app.tags.river_flow.value == pytest.approx(22.507 * 86.4)
+    assert app.tags.river_flow_units.value == "ML/day"
+    assert not any("river_flow" in data["bom_1"] for _, data, _ in app.api.messages)  # history untouched

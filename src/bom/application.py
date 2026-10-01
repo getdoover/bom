@@ -22,6 +22,8 @@ from .flowstats import fetch_history, flow_ranges, thresholds
 from .wdo import Flow, convert_flow, fetch_discharge
 
 FLOW_BACKFILL = timedelta(days=7)
+# Bump when the flow statistics change meaning, so every gauge recomputes them.
+FLOW_STATS_VERSION = 2
 
 log = logging.getLogger(__name__)
 
@@ -342,12 +344,15 @@ class Bom(Application):
         await self.tags.river_flow_units.set(units)
         last_ms = self.tags.river_flow_time.value or 0
         new = [f for f in flows if to_ms(f.time) > last_ms]
-        if not new:
-            return
         for f in new:
             history[to_ms(f.time)]["river_flow"] = convert_flow(f.value, units)
-        await self.tags.river_flow.set(convert_flow(new[-1].value, units))
-        await self.tags.river_flow_time.set(to_ms(new[-1].time))
+        if new:
+            await self.tags.river_flow_cumec.set(new[-1].value)
+            await self.tags.river_flow_time.set(to_ms(new[-1].time))
+        # Shown value always follows the configured units, even with no new point.
+        latest = self.tags.river_flow_cumec.value
+        if latest is not None:
+            await self.tags.river_flow.set(convert_flow(latest, units))
 
     async def update_flow_ranges(self, flow_id: str, flood_levels: list[float | None]) -> None:
         """Flow bands: configured values first, else from the gauge's own record.
@@ -357,11 +362,11 @@ class Bom(Application):
         """
         now = datetime.now(timezone.utc)
         checked = self.tags.flow_stats_checked.value
-        if checked not in (now.strftime("%Y-%m"), f"fail:{now.date()}"):
+        if checked not in (f"{now:%Y-%m}/{FLOW_STATS_VERSION}", f"fail:{now.date()}"):
             try:
                 record = await asyncio.to_thread(fetch_history, self.config.flow.url.value, flow_id)
                 await self.tags.flow_stats.set(thresholds(record, flood_levels))
-                await self.tags.flow_stats_checked.set(now.strftime("%Y-%m"))
+                await self.tags.flow_stats_checked.set(f"{now:%Y-%m}/{FLOW_STATS_VERSION}")
             except Exception:
                 log.exception("Water Data Online history fetch failed")
                 await self.tags.flow_stats_checked.set(f"fail:{now.date()}")

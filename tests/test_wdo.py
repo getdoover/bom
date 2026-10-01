@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from bom.wdo import FLOW_UNITS, convert_flow, parse_discharge
+from bom.wdo import FLOW_UNITS, convert_flow, parse_discharge, parse_procedures
 
 WML = """<?xml version="1.0" ?>
 <sos:GetObservationResponse xmlns:sos="http://www.opengis.net/sos/2.0"
@@ -66,3 +66,20 @@ def test_convert_flow() -> None:
     assert convert_flow(250.0, "GL/day") == 21.6
     assert convert_flow(22.507, "m³/s") == 22.507
     assert list(FLOW_UNITS) == ["ML/day", "m³/s", "L/s", "GL/day"]
+
+
+# A GetDataAvailability response, as the service formats it: the parameter and
+# time-series type are URLs in xlink:href attributes.
+GDA = """<gda:GetDataAvailabilityResponse xmlns:gda="http://www.opengis.net/sosgda/1.0"
+    xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xlink="http://www.w3.org/1999/xlink">
+<gda:dataAvailabilityMember gml:id="Ki.DAM.0"><gda:procedure xlink:href="http://bom.gov.au/waterdata/services/tstypes/Pat3_C_B_1_DailyMax" xlink:title="DMax"/><gda:observedProperty xlink:href="http://bom.gov.au/waterdata/services/parameters/Water Course Level" xlink:title="Water Course Level"/></gda:dataAvailabilityMember>
+<gda:dataAvailabilityMember gml:id="Ki.DAM.1"><gda:procedure xlink:href="http://bom.gov.au/waterdata/services/tstypes/Pat4_C_B_1_DailyMean" xlink:title="DMean"/><gda:observedProperty xlink:href="http://bom.gov.au/waterdata/services/parameters/Water Course Discharge" xlink:title="Water Course Discharge"/></gda:dataAvailabilityMember>
+<gda:dataAvailabilityMember gml:id="Ki.DAM.2"><gda:procedure xlink:href="http://bom.gov.au/waterdata/services/tstypes/Pat4_C_B_1_DailyMax" xlink:title="DMax"/><gda:observedProperty xlink:href="http://bom.gov.au/waterdata/services/parameters/Water Course Discharge" xlink:title="Water Course Discharge"/></gda:dataAvailabilityMember>
+</gda:GetDataAvailabilityResponse>
+"""
+
+
+def test_parse_procedures_reads_href_attributes() -> None:
+    assert parse_procedures(GDA, "Water Course Discharge") == ["Pat4_C_B_1_DailyMean", "Pat4_C_B_1_DailyMax"]
+    assert parse_procedures(GDA, "Water Course Level") == ["Pat3_C_B_1_DailyMax"]
+    assert parse_procedures(GDA, "Rainfall") == []

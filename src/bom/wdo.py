@@ -80,9 +80,16 @@ def list_procedures(url: str, station_id: str, parameter: str, timeout: float = 
         },
         timeout,
     )
+    return parse_procedures(text, parameter)
+
+
+def parse_procedures(text: str, parameter: str) -> list[str]:
+    """Time-series types for *parameter* in a GetDataAvailability response."""
+    # The parameter is a URL in an xlink:href attribute, so it ends at a quote.
+    wanted = re.compile(re.escape(f"parameters/{parameter}") + r'["<]')
     found = []
     for member in re.findall(r"<gda:dataAvailabilityMember.*?</gda:dataAvailabilityMember>", text, re.S):
-        if f"parameters/{parameter}<" in member:
+        if wanted.search(member):
             m = re.search(r"tstypes/([A-Za-z0-9_]+)", member)
             if m:
                 found.append(m.group(1))
