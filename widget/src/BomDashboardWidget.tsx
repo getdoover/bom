@@ -18,6 +18,7 @@ import {
   HISTORY_WINDOW_MS,
   bomAppKey,
   fmt,
+  fmtFlow,
   isReporting,
   lastReading,
   relativeTime,
@@ -166,6 +167,15 @@ function GaugeCard({ g, now }: { g: Gauge; now: number }) {
         )}
         {g.datum && <span className="ml-auto text-[10px] text-muted-foreground">{g.datum}</span>}
       </div>
+
+      {g.flow != null && (
+        <div className="-mt-1.5 flex items-baseline gap-2 text-sm">
+          <span className="tabular-nums">{fmtFlow(g)}</span>
+          <span className="text-xs text-muted-foreground" title="Flow is published about a day behind the level">
+            flow · {relativeTime(g.flowTime, now)}
+          </span>
+        </div>
+      )}
 
       <FloodBar bands={g.bands} level={g.level} />
       <Sparkline points={g.history} bands={g.bands} now={now} />

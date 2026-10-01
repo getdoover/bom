@@ -33,9 +33,17 @@ export interface Gauge {
   rainHour: number | null;
   rain9am: number | null;
   rainTime: number | null;
+  // Water Data Online flow, in the units the gauge is configured for. It runs
+  // about a day behind the level, so its own time travels with it.
+  flow: number | null;
+  flowUnits: string | null;
+  flowTime: number | null;
   status: string | null;
   history: Array<[number, number]>;
 }
+
+/** Decimal places per flow unit, matching the processor's display precision. */
+export const FLOW_DIGITS: Record<string, number> = { "ML/day": 1, "m³/s": 2, "L/s": 0, "GL/day": 3 };
 
 export const FLOOD_SEVERITY: Record<string, number> = {
   "Below flood level": 0,
@@ -97,6 +105,9 @@ export function toGauge(device: GaugeDevice, tags: TagValues | undefined, histor
     rainHour: num(t.rain_last_hour),
     rain9am: num(t.rain_since_9am),
     rainTime: num(t.rain_time),
+    flow: num(t.river_flow),
+    flowUnits: str(t.river_flow_units),
+    flowTime: num(t.river_flow_time),
     status: str(t.status),
     history,
   };
@@ -124,4 +135,13 @@ export function relativeTime(ms: number | null, now: number): string {
 
 export function fmt(v: number | null, digits: number, unit = ""): string {
   return v == null ? "—" : `${v.toFixed(digits)}${unit}`;
+}
+
+/** Flow in its own units, with thousands separators since ML/day values run large. */
+export function fmtFlow(g: Gauge): string {
+  if (g.flow == null) return "—";
+  const unit = g.flowUnits ?? "";
+  const digits = FLOW_DIGITS[unit] ?? 1;
+  const value = g.flow.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return unit ? `${value} ${unit}` : value;
 }

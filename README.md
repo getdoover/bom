@@ -89,7 +89,9 @@ group holding the gauges (extended permissions). Its widget (`widget/`) shows:
 - flood status (worst flood class across the gauges), rivers rising, the
   wettest gauge since 9am, and how many gauges are reporting;
 - a card per gauge: level, trend, flood class, the level against its flood
-  bands, the last 7 days of level, and rain for the last hour and since 9am.
+  bands, the last 7 days of level, and rain for the last hour and since 9am;
+  gauges with a River Flow station also show the flow in its configured units
+  with the age of that reading, since flow runs about a day behind.
 
 It reads each device's BoM Station install (found by application
 name), so the gauges need no extra setup.
