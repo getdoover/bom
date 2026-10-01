@@ -24,8 +24,8 @@ def layout(config, tags) -> str:
     """Which optional parts the UI shows, from the configured stations and their data.
 
     `river` plots the level, `radial` shows it as a gauge (it has flood bands),
-    and the rain series is the 15-minute total when the feed is 15-minute, else
-    the last-hour total.
+    the rain series is the 15-minute total when the feed is 15-minute, else the
+    last-hour total, and `weather` shows the weather station section.
     """
     parts = []
     if config.river.station_id.value.strip() and tags.river_level.value is not None:
@@ -34,6 +34,8 @@ def layout(config, tags) -> str:
             parts.append("radial")
     if config.rain.station_id.value.strip() and tags.rain_period_s.value is not None:
         parts.append("rain_15min" if tags.rain_period_s.value == 900 else "rain_last_hour")
+    if config.weather.station_id.value.strip():
+        parts.append("weather")
     return ",".join(parts)
 
 
@@ -80,10 +82,42 @@ class BomUI(ui.UI):
         "Rain Reading", value=T.rain_time, precision="minute", icon="clock"
     )
 
+    weather = ui.Submodule(
+        "Weather",
+        children=[
+            ui.NumericVariable(
+                "Temperature", value=T.weather_temp, precision=1, units="°C", icon="temperature-half"
+            ),
+            ui.NumericVariable(
+                "Feels Like", value=T.weather_apparent_temp, precision=1, units="°C", icon="person"
+            ),
+            ui.NumericVariable(
+                "Humidity", value=T.weather_humidity, precision=0, units="%", icon="droplet"
+            ),
+            ui.NumericVariable(
+                "Dew Point", value=T.weather_dew_point, precision=1, units="°C", icon="droplet"
+            ),
+            ui.NumericVariable(
+                "Pressure", value=T.weather_pressure, precision=1, units="hPa", icon="gauge-high"
+            ),
+            ui.TextVariable("Wind Direction", value=T.weather_wind_dir, icon="compass"),
+            ui.NumericVariable(
+                "Wind Speed", value=T.weather_wind_speed, precision=0, units="km/h", icon="wind"
+            ),
+            ui.NumericVariable(
+                "Wind Gust", value=T.weather_wind_gust, precision=0, units="km/h", icon="wind"
+            ),
+            ui.Timestamp(
+                "Weather Reading", value=T.weather_time, precision="minute", icon="clock"
+            ),
+        ],
+    )
+
     details = ui.Submodule(
         "Details",
         children=[
             ui.TextVariable("River Level Datum", value=T.river_datum, icon="ruler-vertical"),
+            ui.TextVariable("Weather Station", value=T.weather_station, icon="tower-observation"),
             ui.TextVariable("Status", value=T.status, icon="circle-info"),
         ],
     )
@@ -122,6 +156,21 @@ class BomUI(ui.UI):
                     active=True,
                 )
             )
+        if "weather" in parts:
+            series.append(
+                ui.Series(
+                    "Temperature",
+                    value=T.weather_temp,
+                    name="weather_temp",
+                    data_type="number",
+                    units="°C",
+                    colour=Colour.tomato,
+                    shared_axis=False,
+                    active=False,
+                )
+            )
+        else:
+            self.remove_element("weather")
         if series:
             self.overview.series = series
             if "radial" in parts:

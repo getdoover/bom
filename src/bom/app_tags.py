@@ -18,6 +18,17 @@ class BomTags(tags.Tags):
     rain_time = tags.Number(default=None)  # ms since epoch
     rain_period_s = tags.Number(default=None)  # accumulation period of the rain feed
 
+    weather_temp = tags.Number(default=None)
+    weather_apparent_temp = tags.Number(default=None)
+    weather_dew_point = tags.Number(default=None)
+    weather_humidity = tags.Number(default=None)
+    weather_pressure = tags.Number(default=None)  # hPa, mean sea level
+    weather_wind_dir = tags.String(default=None)
+    weather_wind_speed = tags.Number(default=None)  # km/h
+    weather_wind_gust = tags.Number(default=None)  # km/h
+    weather_time = tags.Number(default=None)  # ms since epoch
+    weather_station = tags.String(default=None)
+
     status = tags.String(default=None)
 
     # Bookkeeping: the 9am rain day that rain_since_9am belongs to, and the

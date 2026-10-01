@@ -43,6 +43,7 @@ RIVER_DEFAULTS = {
 }
 FLOOD_HELP = "Flood classification level in the gauge's datum (m)."
 RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
+WEATHER_DEFAULTS = {"station_id": "", "files": "ID{state}60920.xml"}
 
 
 uses_ftp = config.equal("protocol", "FTP")
@@ -119,6 +120,23 @@ class RainfallSettings(config.Object):
     )
 
 
+class WeatherStationSettings(config.Object):
+    station_id = config.String(
+        "Station ID",
+        default="",
+        description=(
+            "BOM weather station number, e.g. 053115. Often the same as the rain gauge. "
+            "Leave blank to skip."
+        ),
+    )
+    files = config.String(
+        "Files",
+        default=WEATHER_DEFAULTS["files"],
+        description=FILES_HELP + " Files must be BOM observation XML (the state IDx60920.xml).",
+        advanced=True,
+    )
+
+
 class BomConfig(config.Schema):
     state = config.Enum(
         "State",
@@ -128,6 +146,7 @@ class BomConfig(config.Schema):
     )
     river = RiverLevelSettings("River Level", default=RIVER_DEFAULTS)
     rain = RainfallSettings("Rainfall", default=RAIN_DEFAULTS)
+    weather = WeatherStationSettings("Weather Station", default=WEATHER_DEFAULTS)
     ftp = FtpSettings(
         "FTP Server",
         default=FTP_DEFAULTS,

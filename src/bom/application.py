@@ -17,6 +17,7 @@ from .app_ui import BomUI, layout
 from .floodmap import find_levels
 from .ftp import download_latest
 from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
+from .obs import Observation, parse_observations
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +80,8 @@ class Bom(Application):
     async def refresh(self) -> None:
         river_id = self.config.river.station_id.value.strip()
         rain_id = self.config.rain.station_id.value.strip()
-        if not river_id and not rain_id:
+        weather_id = self.config.weather.station_id.value.strip()
+        if not river_id and not rain_id and not weather_id:
             await self.tags.status.set("No station configured")
             return
 
@@ -89,6 +91,8 @@ class Bom(Application):
             prefixes += split_prefixes(self.config.river.files.value, letter)
         if rain_id:
             prefixes += split_prefixes(self.config.rain.files.value, letter)
+        if weather_id:
+            prefixes += split_prefixes(self.config.weather.files.value, letter)
 
         ftp = self.config.ftp
         try:
@@ -107,9 +111,15 @@ class Bom(Application):
             await self.tags.status.set(f"Fetch failed: {e}")
             return
 
+        # Observation XML files hold the latest reading per weather station;
+        # everything else is BOM-HCS.
+        observation = None
+        for name, text in files.items():
+            if name.endswith(".xml"):
+                observation = parse_observations(text).get(weather_id) or observation
         readings = unique_readings(
-            r for text in files.values() for r in parse_hcs(text)
-            if r.station_id in (river_id, rain_id)
+            r for name, text in files.items() if not name.endswith(".xml")
+            for r in parse_hcs(text) if r.station_id in (river_id, rain_id)
         )
 
         levels = [r for r in readings if r.kind == "WL" and r.station_id == river_id]
@@ -123,6 +133,8 @@ class Bom(Application):
         if river_id:
             await self.update_river(levels, await self.flood_levels(river_id, letter), history)
         await self.update_rain(rains, utc_offset, history)
+        if observation:
+            await self.update_weather(observation, history)
 
         for ts in sorted(history):
             await self.api.create_message(
@@ -131,7 +143,11 @@ class Bom(Application):
 
         missing = [
             f"{name} {sid}"
-            for name, sid, got in (("river", river_id, levels), ("rain", rain_id, rains))
+            for name, sid, got in (
+                ("river", river_id, levels),
+                ("rain", rain_id, rains),
+                ("weather", weather_id, observation),
+            )
             if sid and not got
         ]
         await self.tags.status.set(
@@ -140,7 +156,10 @@ class Bom(Application):
 
         await self.update_layout()
 
-        latest = max((r.time for r in levels + rains), default=None)
+        times = [r.time for r in levels + rains]
+        if observation:
+            times.append(observation.time)
+        latest = max(times, default=None)
         if latest is not None:
             await self.ping_connection(
                 online_at=latest,
@@ -250,3 +269,23 @@ class Bom(Application):
             await self.tags.rain_last_hour.set(round(sum(hour), 1))
             await self.tags.rain_time.set(last_ms)
             await self.tags.rain_period_s.set(latest.period_s)
+
+    async def update_weather(self, obs: Observation, history: dict) -> None:
+        """Record the station's latest observation, once per BOM timestamp."""
+        await self.tags.weather_station.set(obs.name)
+        if to_ms(obs.time) <= (self.tags.weather_time.value or 0):
+            return
+        values = {
+            "weather_temp": obs.temp,
+            "weather_apparent_temp": obs.apparent_temp,
+            "weather_dew_point": obs.dew_point,
+            "weather_humidity": obs.humidity,
+            "weather_pressure": obs.pressure,
+            "weather_wind_dir": obs.wind_dir,
+            "weather_wind_speed": obs.wind_speed,
+            "weather_wind_gust": obs.wind_gust,
+        }
+        for name, value in values.items():
+            await getattr(self.tags, name).set(value)
+        await self.tags.weather_time.set(to_ms(obs.time))
+        history[to_ms(obs.time)].update({k: v for k, v in values.items() if v is not None})

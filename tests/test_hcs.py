@@ -10,6 +10,7 @@ from bom.floodmap import parse_levels
 from bom.ftp import latest_file
 from bom.application import flood_ranges
 from bom.hcs import flood_class, level_trend, parse_hcs, rain_day
+from test_obs import OBS_XML
 
 HCS = """# HEADER: File Format: BOM-HCS
 # HEADER: Data Fields: IndexNo, SensorType, SensorDataType, SiteIdType, SiteId, ObservationTimestamp, RealValue, Unit, SensorParam1, SensorParam2, Quality, Comment
@@ -111,7 +112,12 @@ def make_app() -> Bom:
     app = Bom()
     app.config = BomConfig()
     app.config._inject_deployment_config(
-        {"state": "NSW / ACT", "river_level": {"station_id": "068212"}, "rainfall": {"station_id": "068212"}}
+        {
+            "state": "NSW / ACT",
+            "river_level": {"station_id": "068212"},
+            "rainfall": {"station_id": "068212"},
+            "weather_station": {"station_id": "053115"},
+        }
     )
     app.app_key = "bom_1"
     app.api = FakeApi()
@@ -119,6 +125,9 @@ def make_app() -> Bom:
         "river_level", "river_level_time", "river_trend", "river_datum",
         "river_flood_class", "river_ranges",
         "rain_15min", "rain_last_hour", "rain_since_9am", "rain_time", "rain_period_s", "ui_layout",
+        "weather_temp", "weather_apparent_temp", "weather_dew_point", "weather_humidity",
+        "weather_pressure", "weather_wind_dir", "weather_wind_speed", "weather_wind_gust",
+        "weather_time", "weather_station",
         "status", "rain_day", "flood_map_page", "flood_map_levels", "flood_map_checked",
     )})()
 
@@ -132,12 +141,19 @@ def make_app() -> Bom:
 def test_refresh_records_history_and_totals() -> None:
     app = make_app()
     with (
-        patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}),
+        patch(
+            "bom.application.download_latest",
+            return_value={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML},
+        ),
         patch("bom.application.find_levels", return_value=("IDN65195.html", [1.0, 2.0, 3.0])),
     ):
         asyncio.run(app.refresh())
 
     assert app.tags.status.value == "OK"
+    assert app.tags.weather_station.value == "MOREE AERO"
+    assert app.tags.weather_temp.value == 20.6
+    assert app.tags.weather_wind_dir.value == "N"
+    assert app.tags.weather_time.value == int(utc("2026-09-30T23:40:00").timestamp() * 1000)
     assert app.tags.flood_map_page.value == "IDN65195.html"
     assert app.tags.river_flood_class.value == "Minor"  # 1.05 m vs 1.0 m minor
     assert app.tags.river_level.value == 1.05
@@ -151,6 +167,8 @@ def test_refresh_records_history_and_totals() -> None:
     assert history[int(utc("2026-09-29T23:00:00").timestamp() * 1000)]["rain_since_9am"] == 1.4
     assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000)]["rain_since_9am"] == 0.6
     assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000)]["rain_last_hour"] == 2.0
+    weather = history[int(utc("2026-09-30T23:40:00").timestamp() * 1000)]
+    assert weather["weather_temp"] == 20.6 and weather["weather_wind_gust"] == 35
 
     # The first readings and flood levels republish the UI: a radial level
     # gauge and an overview plot of level and 15-minute rain.
@@ -158,13 +176,18 @@ def test_refresh_records_history_and_totals() -> None:
     schema = data["state"]["children"]["bom_1"]["children"]
     assert channel == "ui_state"
     assert schema["river_level"]["form"] == "radialGauge"
-    assert list(schema["overview"]["series"]) == ["river_level", "rain_15min"]
+    assert list(schema["overview"]["series"]) == ["river_level", "rain_15min", "weather_temp"]
     assert schema["overview"]["series"]["river_level"]["ranges"] == "$tag.app().river_ranges:array:[]"
+    assert schema["overview"]["series"]["weather_temp"]["active"] is False
+    assert "temperature" in schema["weather"]["children"]
 
     # A second run over the same file writes nothing new.
     app.api.messages.clear()
     with (
-        patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}),
+        patch(
+            "bom.application.download_latest",
+            return_value={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML},
+        ),
         patch("bom.application.find_levels") as find,
     ):
         asyncio.run(app.refresh())
@@ -193,3 +216,22 @@ def test_schemas_and_entry_point() -> None:
     assert "ftp_server" in BomConfig.to_schema()["properties"]
     assert isinstance(BomUI(None, None, None).to_schema(), dict)
     assert handler
+
+
+def test_weather_section_hidden_without_a_station() -> None:
+    app = make_app()
+    app.config._inject_deployment_config(
+        {"state": "NSW / ACT", "river_level": {"station_id": "068212"}}
+    )
+    with (
+        patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS}),
+        patch("bom.application.find_levels", return_value=("IDN65195.html", [1.0, 2.0, 3.0])),
+    ):
+        asyncio.run(app.refresh())
+
+    assert app.tags.status.value == "OK"
+    assert app.tags.weather_time.value is None
+    [(_, data)] = app.api.aggregates
+    schema = data["state"]["children"]["bom_1"]["children"]
+    assert "weather" not in schema
+    assert list(schema["overview"]["series"]) == ["river_level"]

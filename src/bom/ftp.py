@@ -10,7 +10,10 @@ KEY_TYPES = (paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.RSAKey)
 
 
 def latest_file(names: list[str], prefix: str) -> str | None:
-    # BOM names timestamped products PREFIX_YYYYMMDDHHMMSS.ext; the newest sorts last.
+    # BOM names timestamped products PREFIX_YYYYMMDDHHMMSS.ext; the newest sorts
+    # last. Products kept as a single file (e.g. IDN60920.xml) are named exactly.
+    if prefix in names:
+        return prefix
     matches = [n for n in names if n.startswith(prefix + "_")]
     return max(matches) if matches else None
 
