@@ -6,7 +6,7 @@ from pydoover import config
 from pydoover.config import NotSet
 from pydoover.processor import ScheduleConfig
 
-from .wdo import AS_RECORDED, DEFAULT_URL, HOURLY_MEAN
+from .wdo import AS_RECORDED, DEFAULT_FLOW_UNIT, DEFAULT_URL, FLOW_UNITS, HOURLY_MEAN
 
 # State -> (BOM product letter, UTC offset of local standard time). BOM rain
 # days run 9am-9am local standard time, so daylight saving is ignored.
@@ -35,18 +35,49 @@ FTP_DEFAULTS = {
     "private_key": "",
     "directory": "/anon/gen/fwo",
 }
+STALE_HELP = "Show a warning when the latest reading is older than this."
 RIVER_DEFAULTS = {
     "station_id": "",
     "files": "ID{state}65911,ID{state}65910",
+    "stale_after_hours": 6.0,
     "flood_levels": "BOM flood maps",
     "minor_flood_level": None,
     "moderate_flood_level": None,
     "major_flood_level": None,
 }
 FLOOD_HELP = "Flood classification level in the gauge's datum (m)."
-RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
-WEATHER_DEFAULTS = {"station_id": "", "files": "ID{state}60920.xml"}
-FLOW_DEFAULTS = {"station_id": "", "series": HOURLY_MEAN, "url": DEFAULT_URL}
+RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900", "stale_after_hours": 3.0}
+WEATHER_DEFAULTS = {"station_id": "", "files": "ID{state}60920.xml", "stale_after_hours": 3.0}
+FLOW_DEFAULTS = {
+    "station_id": "",
+    "display_units": DEFAULT_FLOW_UNIT,
+    "series": HOURLY_MEAN,
+    "service_url": DEFAULT_URL,
+    "stale_after_hours": 72.0,
+    "flow_ranges": "Gauge history",
+    "low_flow_below": None,
+    "high_flow_above": None,
+    "very_high_flow_above": None,
+    "minor_flood_flow": None,
+    "moderate_flood_flow": None,
+    "major_flood_flow": None,
+}
+FLOW_RANGE_HELP = "In the display units. Leave blank to take it from the gauge's history."
+# Threshold name (see flowstats) -> RiverFlowSettings attribute holding its override.
+FLOW_RANGE_FIELDS = {
+    "low": "low_flow",
+    "high": "high_flow",
+    "very_high": "very_high_flow",
+    "minor": "minor_flood_flow",
+    "moderate": "moderate_flood_flow",
+    "major": "major_flood_flow",
+}
+
+
+def stale_after(default: float) -> config.Number:
+    return config.Number(
+        "Stale After (hours)", default=default, minimum=0.25, description=STALE_HELP, advanced=True
+    )
 
 
 uses_ftp = config.equal("protocol", "FTP")
@@ -107,6 +138,7 @@ class RiverLevelSettings(config.Object):
     major_flood_level = config.Number(
         "Major Flood Level", default=None, description=FLOOD_HELP, show_if=manual
     )
+    stale_after_hours = stale_after(RIVER_DEFAULTS["stale_after_hours"])
 
 
 class RainfallSettings(config.Object):
@@ -121,6 +153,7 @@ class RainfallSettings(config.Object):
         description=FILES_HELP + " Files must hold rainfall totals (e.g. 15-minute).",
         advanced=True,
     )
+    stale_after_hours = stale_after(RAIN_DEFAULTS["stale_after_hours"])
 
 
 class WeatherStationSettings(config.Object):
@@ -138,6 +171,10 @@ class WeatherStationSettings(config.Object):
         description=FILES_HELP + " Files must be BOM observation XML (the state IDx60920.xml).",
         advanced=True,
     )
+    stale_after_hours = stale_after(WEATHER_DEFAULTS["stale_after_hours"])
+
+
+manual_flow = config.equal("flow_ranges", "Manual")
 
 
 class RiverFlowSettings(config.Object):
@@ -150,6 +187,16 @@ class RiverFlowSettings(config.Object):
             "Leave blank to skip. Flow is published about a day behind."
         ),
     )
+    units = config.Enum(
+        "Display Units",
+        choices=list(FLOW_UNITS),
+        default=FLOW_DEFAULTS["display_units"],
+        description=(
+            "Units the flow is shown and recorded in. Changing this later leaves "
+            "earlier history in the old units."
+        ),
+        advanced=True,
+    )
     series = config.Enum(
         "Series",
         choices=[HOURLY_MEAN, AS_RECORDED],
@@ -157,7 +204,45 @@ class RiverFlowSettings(config.Object):
         description="Hourly mean, or the flow as recorded (usually every 15 minutes).",
         advanced=True,
     )
-    url = config.String("Service URL", default=FLOW_DEFAULTS["url"], advanced=True)
+    url = config.String("Service URL", default=FLOW_DEFAULTS["service_url"], advanced=True)
+    stale_after_hours = stale_after(FLOW_DEFAULTS["stale_after_hours"])
+    ranges = config.Enum(
+        "Flow Ranges",
+        choices=["Gauge history", "Manual"],
+        default=FLOW_DEFAULTS["flow_ranges"],
+        description=(
+            "Where the flow bands come from. Gauge history works them out from the "
+            "station's own record (percentiles, and the flow seen at each flood level). "
+            "Manual shows the fields; any left blank still come from the history."
+        ),
+        advanced=True,
+    )
+    low_flow = config.Number(
+        "Low Flow Below", default=None, description=FLOW_RANGE_HELP, show_if=manual_flow, advanced=True
+    )
+    high_flow = config.Number(
+        "High Flow Above", default=None, description=FLOW_RANGE_HELP, show_if=manual_flow, advanced=True
+    )
+    very_high_flow = config.Number(
+        "Very High Flow Above",
+        default=None,
+        description=FLOW_RANGE_HELP,
+        show_if=manual_flow,
+        advanced=True,
+    )
+    minor_flood_flow = config.Number(
+        "Minor Flood Flow", default=None, description=FLOW_RANGE_HELP, show_if=manual_flow, advanced=True
+    )
+    moderate_flood_flow = config.Number(
+        "Moderate Flood Flow",
+        default=None,
+        description=FLOW_RANGE_HELP,
+        show_if=manual_flow,
+        advanced=True,
+    )
+    major_flood_flow = config.Number(
+        "Major Flood Flow", default=None, description=FLOW_RANGE_HELP, show_if=manual_flow, advanced=True
+    )
 
 
 class BomConfig(config.Schema):

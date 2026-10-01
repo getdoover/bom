@@ -11,8 +11,10 @@ class BomTags(tags.Tags):
     river_datum = tags.String(default=None)
     river_flood_class = tags.String(default=None)
     river_ranges = Tag("array", default=[])  # flood bands, from config
-    river_flow = tags.Number(default=None)  # m³/s
+    river_flow = tags.Number(default=None)  # in river_flow_units
+    river_flow_units = tags.String(default=None)
     river_flow_time = tags.Number(default=None)  # ms since epoch
+    river_flow_ranges = Tag("array", default=[])  # bands, in river_flow_units
 
     rain_15min = tags.Number(default=None)
     rain_last_hour = tags.Number(default=None)
@@ -33,11 +35,22 @@ class BomTags(tags.Tags):
 
     status = tags.String(default=None)
 
+    # Warning indicators are hidden while these hold (True = nothing to warn about).
+    river_level_ok = tags.Boolean(default=True)
+    river_flow_ok = tags.Boolean(default=True)
+    rain_ok = tags.Boolean(default=True)
+    weather_ok = tags.Boolean(default=True)
+    flood_ok = tags.Boolean(default=True)
+
     # Bookkeeping: the 9am rain day that rain_since_9am belongs to, and the
     # flood levels looked up from BOM's map pages (re-checked once a day).
     rain_day = tags.String(default=None)
     flood_map_page = tags.String(default=None)
     flood_map_levels = Tag("array", default=[])
     flood_map_checked = tags.String(default=None)
+    # Flow thresholds (m³/s) from the gauge's record, and when they were last
+    # worked out (a month, or fail:<date> to retry the next day).
+    flow_stats = Tag("object", default={})
+    flow_stats_checked = tags.String(default=None)
     # The UI layout last published (see app_ui.layout), to republish on change.
     ui_layout = tags.String(default=None)

@@ -11,14 +11,15 @@ from pydoover import ui
 from pydoover.processor import Application
 from pydoover.tags.manager import LogMode
 
-from .app_config import STATES, BomConfig
+from .app_config import FLOW_RANGE_FIELDS, STATES, BomConfig
 from .app_tags import BomTags
 from .app_ui import BomUI, layout
 from .floodmap import find_levels
 from .ftp import download_latest
 from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
 from .obs import Observation, parse_observations
-from .wdo import Flow, fetch_discharge
+from .flowstats import fetch_history, flow_ranges, thresholds
+from .wdo import Flow, convert_flow, fetch_discharge
 
 FLOW_BACKFILL = timedelta(days=7)
 
@@ -147,12 +148,16 @@ class Bom(Application):
             rains = [r for r in rains if (r.period_s or 0) == finest]
 
         history: dict[int, dict] = defaultdict(dict)
+        flood_levels: list[float | None] = [None, None, None]
         if river_id:
-            await self.update_river(levels, await self.flood_levels(river_id, letter), history)
+            flood_levels = await self.flood_levels(river_id, letter)
+            await self.update_river(levels, flood_levels, history)
         await self.update_rain(rains, utc_offset, history)
         if observation:
             await self.update_weather(observation, history)
         await self.update_flow(flows, history)
+        if flow_id:
+            await self.update_flow_ranges(flow_id, flood_levels)
 
         for ts in sorted(history):
             await self.api.create_message(
@@ -173,6 +178,7 @@ class Bom(Application):
                 problems.append(f"No data in BOM files for {', '.join(missing)}")
         await self.tags.status.set("; ".join(problems) or "OK")
 
+        await self.update_warnings()
         await self.update_layout()
 
         # Flow runs a day behind, so it only decides online/offline on its own.
@@ -188,6 +194,26 @@ class Bom(Application):
                 offline_at=latest
                 + timedelta(minutes=self.config.offline_after_minutes.value),
             )
+
+    async def update_warnings(self) -> None:
+        """Flag readings older than each source's Stale After, and a river in flood."""
+        now_ms = to_ms(datetime.now(timezone.utc))
+
+        def fresh(section, time_ms: int | None) -> bool:
+            if not section.station_id.value.strip():
+                return True  # not configured, nothing to be stale
+            limit_ms = section.stale_after_hours.value * 3600_000
+            return time_ms is not None and now_ms - time_ms <= limit_ms
+
+        c, t = self.config, self.tags
+        await t.river_level_ok.set(fresh(c.river, t.river_level_time.value))
+        await t.river_flow_ok.set(fresh(c.flow, t.river_flow_time.value))
+        await t.rain_ok.set(fresh(c.rain, t.rain_time.value))
+        await t.weather_ok.set(fresh(c.weather, t.weather_time.value))
+        await t.flood_ok.set(
+            not c.river.station_id.value.strip()
+            or t.river_flood_class.value in (None, "Below flood level")
+        )
 
     async def update_layout(self) -> None:
         """Republish the UI when this run's data changes which parts it shows.
@@ -311,14 +337,43 @@ class Bom(Application):
         )
 
     async def update_flow(self, flows: list[Flow], history: dict) -> None:
+        """Record new flow points, converted into the configured display units."""
+        units = self.config.flow.units.value
+        await self.tags.river_flow_units.set(units)
         last_ms = self.tags.river_flow_time.value or 0
         new = [f for f in flows if to_ms(f.time) > last_ms]
         if not new:
             return
         for f in new:
-            history[to_ms(f.time)]["river_flow"] = f.value
-        await self.tags.river_flow.set(new[-1].value)
+            history[to_ms(f.time)]["river_flow"] = convert_flow(f.value, units)
+        await self.tags.river_flow.set(convert_flow(new[-1].value, units))
         await self.tags.river_flow_time.set(to_ms(new[-1].time))
+
+    async def update_flow_ranges(self, flow_id: str, flood_levels: list[float | None]) -> None:
+        """Flow bands: configured values first, else from the gauge's own record.
+
+        The record is read once a month (or again the next day after a failure);
+        the bands are rebuilt every run so a config change shows on the next one.
+        """
+        now = datetime.now(timezone.utc)
+        checked = self.tags.flow_stats_checked.value
+        if checked not in (now.strftime("%Y-%m"), f"fail:{now.date()}"):
+            try:
+                record = await asyncio.to_thread(fetch_history, self.config.flow.url.value, flow_id)
+                await self.tags.flow_stats.set(thresholds(record, flood_levels))
+                await self.tags.flow_stats_checked.set(now.strftime("%Y-%m"))
+            except Exception:
+                log.exception("Water Data Online history fetch failed")
+                await self.tags.flow_stats_checked.set(f"fail:{now.date()}")
+
+        units = self.config.flow.units.value
+        edges = {k: convert_flow(v, units) for k, v in (self.tags.flow_stats.value or {}).items()}
+        if self.config.flow.ranges.value == "Manual":
+            for key, field in FLOW_RANGE_FIELDS.items():
+                value = getattr(self.config.flow, field).value
+                if value is not None:
+                    edges[key] = value
+        await self.tags.river_flow_ranges.set(flow_ranges(edges))
 
     async def update_weather(self, obs: Observation, history: dict) -> None:
         """Record the station's latest observation, once per BOM timestamp."""
