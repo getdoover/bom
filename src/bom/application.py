@@ -18,6 +18,9 @@ from .floodmap import find_levels
 from .ftp import download_latest
 from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
 from .obs import Observation, parse_observations
+from .wdo import Flow, fetch_discharge
+
+FLOW_BACKFILL = timedelta(days=7)
 
 log = logging.getLogger(__name__)
 
@@ -81,9 +84,22 @@ class Bom(Application):
         river_id = self.config.river.station_id.value.strip()
         rain_id = self.config.rain.station_id.value.strip()
         weather_id = self.config.weather.station_id.value.strip()
-        if not river_id and not rain_id and not weather_id:
+        flow_id = self.config.flow.station_id.value.strip()
+        if not any((river_id, rain_id, weather_id, flow_id)):
             await self.tags.status.set("No station configured")
             return
+
+        problems = []
+        flows: list[Flow] = []
+        if flow_id:
+            try:
+                flows = await self.fetch_flow(flow_id)
+            except Exception as e:
+                log.exception("Water Data Online fetch failed")
+                problems.append(f"Flow fetch failed: {e}")
+            else:
+                if not flows and self.tags.river_flow_time.value is None:
+                    problems.append(f"No flow data for {flow_id}")
 
         letter, utc_offset = STATES[self.config.state.value]
         prefixes = []
@@ -94,22 +110,23 @@ class Bom(Application):
         if weather_id:
             prefixes += split_prefixes(self.config.weather.files.value, letter)
 
+        files = {}
         ftp = self.config.ftp
-        try:
-            files = await asyncio.to_thread(
-                download_latest,
-                ftp.host.value,
-                ftp.username.value,
-                ftp.password.value,
-                ftp.directory.value,
-                prefixes,
-                protocol=ftp.protocol.value,
-                private_key=ftp.private_key.value,
-            )
-        except Exception as e:
-            log.exception("BOM fetch failed")
-            await self.tags.status.set(f"Fetch failed: {e}")
-            return
+        if prefixes:
+            try:
+                files = await asyncio.to_thread(
+                    download_latest,
+                    ftp.host.value,
+                    ftp.username.value,
+                    ftp.password.value,
+                    ftp.directory.value,
+                    prefixes,
+                    protocol=ftp.protocol.value,
+                    private_key=ftp.private_key.value,
+                )
+            except Exception as e:
+                log.exception("BOM fetch failed")
+                problems.append(f"Fetch failed: {e}")
 
         # Observation XML files hold the latest reading per weather station;
         # everything else is BOM-HCS.
@@ -135,30 +152,35 @@ class Bom(Application):
         await self.update_rain(rains, utc_offset, history)
         if observation:
             await self.update_weather(observation, history)
+        await self.update_flow(flows, history)
 
         for ts in sorted(history):
             await self.api.create_message(
                 "tag_values", {self.app_key: history[ts]}, timestamp=ts
             )
 
-        missing = [
-            f"{name} {sid}"
-            for name, sid, got in (
-                ("river", river_id, levels),
-                ("rain", rain_id, rains),
-                ("weather", weather_id, observation),
-            )
-            if sid and not got
-        ]
-        await self.tags.status.set(
-            f"No data in BOM files for {', '.join(missing)}" if missing else "OK"
-        )
+        if files:
+            missing = [
+                f"{name} {sid}"
+                for name, sid, got in (
+                    ("river", river_id, levels),
+                    ("rain", rain_id, rains),
+                    ("weather", weather_id, observation),
+                )
+                if sid and not got
+            ]
+            if missing:
+                problems.append(f"No data in BOM files for {', '.join(missing)}")
+        await self.tags.status.set("; ".join(problems) or "OK")
 
         await self.update_layout()
 
+        # Flow runs a day behind, so it only decides online/offline on its own.
         times = [r.time for r in levels + rains]
         if observation:
             times.append(observation.time)
+        if not times and flows:
+            times.append(flows[-1].time)
         latest = max(times, default=None)
         if latest is not None:
             await self.ping_connection(
@@ -269,6 +291,34 @@ class Bom(Application):
             await self.tags.rain_last_hour.set(round(sum(hour), 1))
             await self.tags.rain_time.set(last_ms)
             await self.tags.rain_period_s.set(latest.period_s)
+
+    async def fetch_flow(self, flow_id: str) -> list[Flow]:
+        """Flow since the last recorded point, or the last week on the first run."""
+        now = datetime.now(timezone.utc)
+        last_ms = self.tags.river_flow_time.value
+        start = (
+            datetime.fromtimestamp(last_ms / 1000, timezone.utc)
+            if last_ms
+            else now - FLOW_BACKFILL
+        )
+        return await asyncio.to_thread(
+            fetch_discharge,
+            self.config.flow.url.value,
+            flow_id,
+            self.config.flow.series.value,
+            start,
+            now + timedelta(hours=1),
+        )
+
+    async def update_flow(self, flows: list[Flow], history: dict) -> None:
+        last_ms = self.tags.river_flow_time.value or 0
+        new = [f for f in flows if to_ms(f.time) > last_ms]
+        if not new:
+            return
+        for f in new:
+            history[to_ms(f.time)]["river_flow"] = f.value
+        await self.tags.river_flow.set(new[-1].value)
+        await self.tags.river_flow_time.set(to_ms(new[-1].time))
 
     async def update_weather(self, obs: Observation, history: dict) -> None:
         """Record the station's latest observation, once per BOM timestamp."""

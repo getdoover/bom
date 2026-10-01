@@ -6,6 +6,8 @@ from pydoover import config
 from pydoover.config import NotSet
 from pydoover.processor import ScheduleConfig
 
+from .wdo import AS_RECORDED, DEFAULT_URL, HOURLY_MEAN
+
 # State -> (BOM product letter, UTC offset of local standard time). BOM rain
 # days run 9am-9am local standard time, so daylight saving is ignored.
 STATES = {
@@ -44,6 +46,7 @@ RIVER_DEFAULTS = {
 FLOOD_HELP = "Flood classification level in the gauge's datum (m)."
 RAIN_DEFAULTS = {"station_id": "", "files": "ID{state}65900"}
 WEATHER_DEFAULTS = {"station_id": "", "files": "ID{state}60920.xml"}
+FLOW_DEFAULTS = {"station_id": "", "series": HOURLY_MEAN, "url": DEFAULT_URL}
 
 
 uses_ftp = config.equal("protocol", "FTP")
@@ -137,6 +140,26 @@ class WeatherStationSettings(config.Object):
     )
 
 
+class RiverFlowSettings(config.Object):
+    station_id = config.String(
+        "Station ID",
+        default="",
+        description=(
+            "Water Data Online station number, e.g. 418001. This is the water agency's "
+            "number for the gauge, usually different from the BOM river gauge number. "
+            "Leave blank to skip. Flow is published about a day behind."
+        ),
+    )
+    series = config.Enum(
+        "Series",
+        choices=[HOURLY_MEAN, AS_RECORDED],
+        default=FLOW_DEFAULTS["series"],
+        description="Hourly mean, or the flow as recorded (usually every 15 minutes).",
+        advanced=True,
+    )
+    url = config.String("Service URL", default=FLOW_DEFAULTS["url"], advanced=True)
+
+
 class BomConfig(config.Schema):
     state = config.Enum(
         "State",
@@ -147,6 +170,7 @@ class BomConfig(config.Schema):
     river = RiverLevelSettings("River Level", default=RIVER_DEFAULTS)
     rain = RainfallSettings("Rainfall", default=RAIN_DEFAULTS)
     weather = WeatherStationSettings("Weather Station", default=WEATHER_DEFAULTS)
+    flow = RiverFlowSettings("River Flow", default=FLOW_DEFAULTS)
     ftp = FtpSettings(
         "FTP Server",
         default=FTP_DEFAULTS,

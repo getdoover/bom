@@ -11,6 +11,8 @@ class BomTags(tags.Tags):
     river_datum = tags.String(default=None)
     river_flood_class = tags.String(default=None)
     river_ranges = Tag("array", default=[])  # flood bands, from config
+    river_flow = tags.Number(default=None)  # m³/s
+    river_flow_time = tags.Number(default=None)  # ms since epoch
 
     rain_15min = tags.Number(default=None)
     rain_last_hour = tags.Number(default=None)

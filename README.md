@@ -12,12 +12,23 @@ observation time.
 | River Level | Level (m), trend, flood class, datum (`AHD` or `LGH` local gauge height) | `IDx65911` (15-min readings, last ~3 h) + `IDx65910` (latest) |
 | Rainfall | Last 15 min, last hour, since 9am (mm) | `IDx65900` (15-min totals, last ~2 h) |
 | Weather Station | Temperature, feels like, humidity, dew point, pressure, wind direction / speed / gust | `IDx60920.xml` (latest ~10-min observation per station) |
+| River Flow | Flow (m³/s) with its own "as at" time | Water Data Online SOS2 API over HTTPS, not FTP (see below) |
 
 Each section takes a BOM station number (e.g. `068212`); leave it blank to skip
 that source. Many sites use the same number for river and rain, and the rain
 gauge is often also the weather station (e.g. Moree Aero, `053115`). The
 observation file only carries each station's latest reading, so weather history
-is one point per run. River Level's minor /
+is one point per run.
+
+**River Flow** is different: it comes from BOM's Water Data Online, which
+republishes the state water agencies' gauges, so the station number is the
+agency's (e.g. `418001` for Gwydir River at Pallamallawa, whose flood-warning
+number is `553000`). Look it up at
+[bom.gov.au/waterdata](http://www.bom.gov.au/waterdata/). Flow is derived from
+level through the agency's rating curve and is published about a day behind, so
+the UI shows it with its own timestamp and it does not count towards the device
+being online unless it is the only source. The default series is the hourly
+mean; the first run backfills a week. River Level's minor /
 moderate / major flood levels drive the flood class and the level gauge's colour
 bands. By default (**Flood Levels: BOM flood maps**) they come from BOM's
 flood-warning maps (the `IDx65xxx.html` pages on the public FTP feed): the
@@ -47,7 +58,8 @@ that day.
 Add a config section in `app_config.py`, tags and UI elements for its values,
 and a step in `Bom.refresh()`. `ftp.download_latest` fetches the newest file
 for any prefix; `hcs.py` parses the flood-warning (BOM-HCS) format, `obs.py` the
-observation XML, and `floodmap.py` reads flood levels from the map pages.
+observation XML, `wdo.py` fetches Water Data Online discharge, and
+`floodmap.py` reads flood levels from the map pages.
 
 ## BoM FWIN Dashboard
 
@@ -71,8 +83,7 @@ Also on BOM's public FTP feed (`/anon/gen/fwo`), not yet used here:
 | --- | --- | --- |
 | Town forecasts | `IDx11xxx.xml` / `IDx10xxx.xml` precis forecasts (e.g. `IDQ11295`, `IDN11060`) | 7-day min/max, chance of rain, rain range, summary text |
 | Warnings | `IDx2xxxx.cap.xml` (CAP format) | Flood, severe thunderstorm and wind warnings for the area; notifications when issued |
-| River flow | Water Data Online SOS2 API (HTTPS), `Water Course Discharge`, procedure `Pat4_C_B_1` | 15-min discharge (cumec), but published a day or so late, and keyed by the owning agency's station number (e.g. `418001`), not the flood-warning one |
-| Rain and level history | Water Data Online SOS2 API (HTTPS) | Years of history to backfill a new device |
+| Rain and level history | Water Data Online SOS2 API (HTTPS), as River Flow uses | Years of history to backfill a new device |
 
 A notification when a gauge's flood class changes would build on the existing
 River Level data.

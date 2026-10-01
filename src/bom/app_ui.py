@@ -25,7 +25,8 @@ def layout(config, tags) -> str:
 
     `river` plots the level, `radial` shows it as a gauge (it has flood bands),
     the rain series is the 15-minute total when the feed is 15-minute, else the
-    last-hour total, and `weather` shows the weather station section.
+    last-hour total, `weather` shows the weather station section and `flow` the
+    river flow values.
     """
     parts = []
     if config.river.station_id.value.strip() and tags.river_level.value is not None:
@@ -36,6 +37,8 @@ def layout(config, tags) -> str:
         parts.append("rain_15min" if tags.rain_period_s.value == 900 else "rain_last_hour")
     if config.weather.station_id.value.strip():
         parts.append("weather")
+    if config.flow.station_id.value.strip():
+        parts.append("flow")
     return ",".join(parts)
 
 
@@ -57,6 +60,14 @@ class BomUI(ui.UI):
     river_trend = ui.TextVariable("River Trend", value=T.river_trend, icon="arrow-trend-up")
     river_level_time = ui.Timestamp(
         "River Reading", value=T.river_level_time, precision="minute", icon="clock"
+    )
+
+    # Flow is published about a day behind, so its own timestamp sits beside it.
+    river_flow = ui.NumericVariable(
+        "River Flow", value=T.river_flow, precision=2, units="m³/s", icon="water"
+    )
+    river_flow_time = ui.Timestamp(
+        "Flow As At", value=T.river_flow_time, precision="minute", icon="clock"
     )
 
     rain_since_9am = ui.NumericVariable(
@@ -171,6 +182,22 @@ class BomUI(ui.UI):
             )
         else:
             self.remove_element("weather")
+        if "flow" in parts:
+            series.append(
+                ui.Series(
+                    "River Flow",
+                    value=T.river_flow,
+                    name="river_flow",
+                    data_type="number",
+                    units="m³/s",
+                    colour=Colour.green,
+                    shared_axis=False,
+                    active=False,
+                )
+            )
+        else:
+            self.remove_element("river_flow")
+            self.remove_element("river_flow_time")
         if series:
             self.overview.series = series
             if "radial" in parts:

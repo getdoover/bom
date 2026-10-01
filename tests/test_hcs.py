@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from bom import handler
@@ -11,6 +11,7 @@ from bom.ftp import latest_file
 from bom.application import flood_ranges
 from bom.hcs import flood_class, level_trend, parse_hcs, rain_day
 from test_obs import OBS_XML
+from bom.wdo import Flow
 
 HCS = """# HEADER: File Format: BOM-HCS
 # HEADER: Data Fields: IndexNo, SensorType, SensorDataType, SiteIdType, SiteId, ObservationTimestamp, RealValue, Unit, SensorParam1, SensorParam2, Quality, Comment
@@ -117,13 +118,14 @@ def make_app() -> Bom:
             "river_level": {"station_id": "068212"},
             "rainfall": {"station_id": "068212"},
             "weather_station": {"station_id": "053115"},
+            "river_flow": {"station_id": "418001"},
         }
     )
     app.app_key = "bom_1"
     app.api = FakeApi()
     app.tags = type("Tags", (), {n: FakeTag() for n in (
         "river_level", "river_level_time", "river_trend", "river_datum",
-        "river_flood_class", "river_ranges",
+        "river_flood_class", "river_ranges", "river_flow", "river_flow_time",
         "rain_15min", "rain_last_hour", "rain_since_9am", "rain_time", "rain_period_s", "ui_layout",
         "weather_temp", "weather_apparent_temp", "weather_dew_point", "weather_humidity",
         "weather_pressure", "weather_wind_dir", "weather_wind_speed", "weather_wind_gust",
@@ -138,6 +140,12 @@ def make_app() -> Bom:
     return app
 
 
+FLOWS = [
+    Flow(utc("2026-09-29T11:00:00"), 19.149),
+    Flow(utc("2026-09-29T12:00:00"), 22.507),
+]
+
+
 def test_refresh_records_history_and_totals() -> None:
     app = make_app()
     with (
@@ -146,8 +154,16 @@ def test_refresh_records_history_and_totals() -> None:
             return_value={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML},
         ),
         patch("bom.application.find_levels", return_value=("IDN65195.html", [1.0, 2.0, 3.0])),
+        patch("bom.application.fetch_discharge", return_value=FLOWS) as fetch,
     ):
         asyncio.run(app.refresh())
+
+    # First run: a week's backfill, from the default service and series.
+    url, station, series, start, end = fetch.call_args.args
+    assert (url, station, series) == ("https://www.bom.gov.au/waterdata/services", "418001", "Pat4_C_B_1_HourlyMean")
+    assert timedelta(days=6, hours=23) < end - start < timedelta(days=7, hours=2)
+    assert app.tags.river_flow.value == 22.507
+    assert app.tags.river_flow_time.value == int(utc("2026-09-29T12:00:00").timestamp() * 1000)
 
     assert app.tags.status.value == "OK"
     assert app.tags.weather_station.value == "MOREE AERO"
@@ -169,6 +185,7 @@ def test_refresh_records_history_and_totals() -> None:
     assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000)]["rain_last_hour"] == 2.0
     weather = history[int(utc("2026-09-30T23:40:00").timestamp() * 1000)]
     assert weather["weather_temp"] == 20.6 and weather["weather_wind_gust"] == 35
+    assert history[int(utc("2026-09-29T11:00:00").timestamp() * 1000)]["river_flow"] == 19.149
 
     # The first readings and flood levels republish the UI: a radial level
     # gauge and an overview plot of level and 15-minute rain.
@@ -176,7 +193,8 @@ def test_refresh_records_history_and_totals() -> None:
     schema = data["state"]["children"]["bom_1"]["children"]
     assert channel == "ui_state"
     assert schema["river_level"]["form"] == "radialGauge"
-    assert list(schema["overview"]["series"]) == ["river_level", "rain_15min", "weather_temp"]
+    assert list(schema["overview"]["series"]) == ["river_level", "rain_15min", "weather_temp", "river_flow"]
+    assert "river_flow" in schema and "flow_as_at" in schema
     assert schema["overview"]["series"]["river_level"]["ranges"] == "$tag.app().river_ranges:array:[]"
     assert schema["overview"]["series"]["weather_temp"]["active"] is False
     assert "temperature" in schema["weather"]["children"]
@@ -189,10 +207,13 @@ def test_refresh_records_history_and_totals() -> None:
             return_value={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML},
         ),
         patch("bom.application.find_levels") as find,
+        patch("bom.application.fetch_discharge", return_value=FLOWS) as fetch,
     ):
         asyncio.run(app.refresh())
     find.assert_not_called()  # already looked up today
     assert app.api.messages == []
+    # Later runs ask only for flow since the last recorded point.
+    assert fetch.call_args.args[3] == utc("2026-09-29T12:00:00")
     assert len(app.api.aggregates) == 1  # layout unchanged, so not republished
 
 
@@ -234,4 +255,22 @@ def test_weather_section_hidden_without_a_station() -> None:
     [(_, data)] = app.api.aggregates
     schema = data["state"]["children"]["bom_1"]["children"]
     assert "weather" not in schema
+    assert "river_flow" not in schema and "flow_as_at" not in schema
     assert list(schema["overview"]["series"]) == ["river_level"]
+
+
+def test_flow_failure_keeps_other_sources() -> None:
+    app = make_app()
+    with (
+        patch(
+            "bom.application.download_latest",
+            return_value={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML},
+        ),
+        patch("bom.application.find_levels", return_value=("IDN65195.html", [1.0, 2.0, 3.0])),
+        patch("bom.application.fetch_discharge", side_effect=OSError("timed out")),
+    ):
+        asyncio.run(app.refresh())
+
+    assert app.tags.status.value == "Flow fetch failed: timed out"
+    assert app.tags.river_level.value == 1.05
+    assert app.tags.river_flow.value is None
