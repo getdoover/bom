@@ -98,7 +98,7 @@ class Bom(Application):
             try:
                 flows = await self.fetch_flow(flow_id)
             except Exception as e:
-                log.exception("Water Data Online fetch failed")
+                log.exception("Water Data Online fetch failed: %s", e)
                 problems.append(f"Flow fetch failed: {e}")
             else:
                 if not flows and self.tags.river_flow_time.value is None:
@@ -128,7 +128,7 @@ class Bom(Application):
                     private_key=ftp.private_key.value,
                 )
             except Exception as e:
-                log.exception("BOM fetch failed")
+                log.exception("BOM fetch failed: %s", e)
                 problems.append(f"Fetch failed: {e}")
 
         # Observation XML files hold the latest reading per weather station;
@@ -250,8 +250,8 @@ class Bom(Application):
                 found = await asyncio.to_thread(
                     find_levels, river_id, letter, self.tags.flood_map_page.value
                 )
-            except Exception:
-                log.exception("BOM flood map lookup failed")
+            except Exception as e:
+                log.exception("BOM flood map lookup failed: %s", e)
             else:
                 page, bom_levels = found or (None, [])
                 await self.tags.flood_map_page.set(page)
@@ -367,8 +367,8 @@ class Bom(Application):
                 record = await asyncio.to_thread(fetch_history, self.config.flow.url.value, flow_id)
                 await self.tags.flow_stats.set(thresholds(record, flood_levels))
                 await self.tags.flow_stats_checked.set(f"{now:%Y-%m}/{FLOW_STATS_VERSION}")
-            except Exception:
-                log.exception("Water Data Online history fetch failed")
+            except Exception as e:
+                log.exception("Water Data Online history fetch failed: %s", e)
                 await self.tags.flow_stats_checked.set(f"fail:{now.date()}")
 
         units = self.config.flow.units.value

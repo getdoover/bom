@@ -19,6 +19,12 @@ LEVEL = "Water Course Level"
 HOURLY_MEAN = "Pat4_C_B_1_HourlyMean"
 AS_RECORDED = "Pat4_C_B_1"
 
+# A healthy response takes about a second. Every scheduled run makes the
+# discharge request, so give up well before the Lambda's own limit when the
+# service hangs; the big history pulls (years of daily data) get longer.
+FETCH_TIMEOUT = 20
+HISTORY_TIMEOUT = 60
+
 WML2 = "{http://www.opengis.net/waterml/2.0}"
 OWS = "{http://www.opengis.net/ows/1.1}"
 
@@ -52,7 +58,7 @@ def fetch_discharge(
     procedure: str,
     start: datetime,
     end: datetime,
-    timeout: float = 60,
+    timeout: float = FETCH_TIMEOUT,
 ) -> list[Flow]:
     return parse_discharge(_get_observation(url, station_id, DISCHARGE, procedure, start, end, timeout))
 
@@ -64,13 +70,13 @@ def fetch_series(
     procedure: str,
     start: datetime,
     end: datetime,
-    timeout: float = 60,
+    timeout: float = HISTORY_TIMEOUT,
 ) -> tuple[str | None, list[tuple[datetime, float]]]:
     """(unit, points oldest first) for any parameter and time-series type."""
     return parse_timeseries(_get_observation(url, station_id, parameter, procedure, start, end, timeout))
 
 
-def list_procedures(url: str, station_id: str, parameter: str, timeout: float = 60) -> list[str]:
+def list_procedures(url: str, station_id: str, parameter: str, timeout: float = HISTORY_TIMEOUT) -> list[str]:
     """The time-series types (e.g. Pat4_C_B_1_DailyMean) the station publishes for a parameter."""
     text = _get(
         url,
