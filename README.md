@@ -34,14 +34,14 @@ L/s or GL/day. History already recorded stays in the units of the time, so
 pick the unit before the first run where possible.
 
 The flow's bands come from the gauge's own record by default (**Flow Ranges:
-Gauge history**): the app reads up to 16 years of daily flow and level from
-Water Data Online once a month (a few requests of ~1 MB) and takes the 10th /
-90th / 99th percentiles as the Low / Normal / High / Very High edges, and the
-median flow on the days the river stood at each flood level as the Minor /
-Moderate / Major Flood edges. A flood level the record never reached is left
-out rather than extrapolated, and a record under three years gives no
-percentile bands. **Manual** shows the six edges (in the display units); any
-left blank still come from the history. River Level's minor /
+Gauge history**): the app reads up to 16 years of daily flow from Water Data
+Online once a month (a request of ~1 MB) and takes the 25th and 75th
+percentiles as the Low / Normal / High edges. The bands deliberately stop at
+High, closed at 1.5x its edge: river flow is so skewed that bands reaching up
+to flood flows would squash a normal day's trace onto the floor of the graph.
+The UI grows the top band when the flow exceeds it, so floods still plot. A
+record under three years gives no bands. **Manual** shows the two edges (in
+the display units); any left blank still come from the history. River Level's minor /
 moderate / major flood levels drive the flood class and the level gauge's colour
 bands. By default (**Flood Levels: BOM flood maps**) they come from BOM's
 flood-warning maps (the `IDx65xxx.html` pages on the public FTP feed): the

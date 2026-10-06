@@ -153,12 +153,11 @@ FLOWS = [
 
 @pytest.fixture(autouse=True)
 def gauge_record():
-    """Stand in for the Water Data Online history: flows 1..2000 m³/s, two days at 1.0 m (minor)."""
+    """Stand in for the Water Data Online history: flows 1..2000 m³/s, one per day."""
     from datetime import date
     start = date(2020, 1, 1)
     mean = {start + timedelta(days=i): float(i + 1) for i in range(2000)}
-    level = {d: (1.0 if v in (1990.0, 1995.0) else 0.5) for d, v in mean.items()}
-    with patch("bom.application.fetch_history", return_value=History(mean, dict(mean), level)) as fetch:
+    with patch("bom.application.fetch_history", return_value=History(mean)) as fetch:
         yield fetch
 
 
@@ -184,12 +183,12 @@ def test_refresh_records_history_and_totals(gauge_record) -> None:
     assert app.tags.flood_ok.value is False
     assert app.tags.river_flow_units.value == "ML/day"
     assert app.tags.river_flow_time.value == int(utc("2026-09-29T12:00:00").timestamp() * 1000)
-    # Flow bands from the gauge's record, in the display units: p10 / p90 / p99, and the minor flood flow.
-    assert app.tags.flow_stats.value == {"low": 201.0, "high": 1800.0, "very_high": 1980.0, "minor": 1992.5, "max": 2000.0}
-    assert [(b["label"], b["min"]) for b in app.tags.river_flow_ranges.value] == [
-        ("Low", 0), ("Normal", 201.0 * 86.4), ("High", 1800.0 * 86.4), ("Very High", 1980.0 * 86.4), ("Minor Flood", 1992.5 * 86.4)
+    # Flow bands from the gauge's record, in the display units: p25 / p75, with High closed at 1.5x its edge.
+    assert app.tags.flow_stats.value == {"low": 501.0, "high": 1500.0}
+    assert [(b["label"], b["min"], b["max"]) for b in app.tags.river_flow_ranges.value] == [
+        ("Low", 0, 43286.4), ("Normal", 43286.4, 129600.0), ("High", 129600.0, 194400.0)
     ]
-    assert app.tags.flow_stats_checked.value == datetime.now(timezone.utc).strftime("%Y-%m") + "/2"
+    assert app.tags.flow_stats_checked.value == datetime.now(timezone.utc).strftime("%Y-%m") + "/3"
 
     assert app.tags.status.value == "OK"
     assert app.tags.weather_station.value == "MOREE AERO"
@@ -226,7 +225,7 @@ def test_refresh_records_history_and_totals(gauge_record) -> None:
     assert "river_flow" in schema
     assert (schema["river_flow"]["units"], schema["river_flow"]["decPrecision"]) == ("ML/day", 1)
     assert schema["overview"]["series"]["river_flow"]["units"] == "ML/day"
-    assert [b["label"] for b in schema["overview"]["series"]["river_flow"]["ranges"]] == ["Low", "Normal", "High", "Very High", "Minor Flood"]
+    assert [b["label"] for b in schema["overview"]["series"]["river_flow"]["ranges"]] == ["Low", "Normal", "High"]
     assert schema["river_flow"]["ranges"] == "$tag.app().river_flow_ranges:array:[]"
     assert schema["overview"]["series"]["river_flow"]["active"] is True
     # Flow sits directly under the level; the flood class is kept but hidden.
@@ -240,7 +239,7 @@ def test_refresh_records_history_and_totals(gauge_record) -> None:
     # All the reading times sit together in Details.
     assert "river_reading" not in schema and "rain_as_at" not in schema
     assert list(schema["details"]["children"])[:4] == ["river_level_as_at", "river_flow_as_at", "rain_as_at", "weather_as_at"]
-    assert [r["label"] for r in schema["rain_since_9am"]["ranges"]] == ["Light", "Moderate", "Heavy", "Very Heavy", "Extreme"]
+    assert [r["label"] for r in schema["rain_since_9am"]["ranges"]] == ["Light", "Moderate", "Heavy", "Very Heavy"]
     weather = schema["weather"]["children"]
     assert all("ranges" in weather[k] for k in ("temperature", "feels_like", "humidity", "dew_point", "pressure", "wind_speed", "wind_gust"))
     # The plot gets the flood bands literally (it cannot resolve a tag reference there).
@@ -425,8 +424,7 @@ def test_manual_flow_ranges_override_the_record_field_by_field(gauge_record) -> 
                 "station_id": "418001",
                 "display_units": "m³/s",
                 "flow_ranges": "Manual",
-                "high_flow_above": 1500,
-                "major_flood_flow": 2500,
+                "high_flow_above": 1200,
             },
         }
     )
@@ -437,19 +435,16 @@ def test_manual_flow_ranges_override_the_record_field_by_field(gauge_record) -> 
     ):
         asyncio.run(app.refresh())
     assert [(b["label"], b["min"], b["max"]) for b in app.tags.river_flow_ranges.value] == [
-        ("Low", 0, 201.0),
-        ("Normal", 201.0, 1500),         # overridden
-        ("High", 1500, 1980.0),
-        ("Very High", 1980.0, 1992.5),
-        ("Minor Flood", 1992.5, 2500),   # from the record
-        ("Major Flood", 2500, 3750),     # overridden; top is 1.5x as it exceeds the record max
+        ("Low", 0, 501.0),        # from the record
+        ("Normal", 501.0, 1200),  # overridden
+        ("High", 1200, 1800),     # 1.5x the overridden edge
     ]
 
 
 def test_record_fetch_failure_keeps_old_bands_and_retries_tomorrow(gauge_record) -> None:
     app = make_app()
     app.tags.river_flow_ranges.value = [{"label": "Normal", "min": 0, "max": 10, "colour": "green"}]
-    app.tags.flow_stats.value = {"max": 10.0}
+    app.tags.flow_stats.value = {"low": 2.0, "high": 8.0}
     gauge_record.side_effect = OSError("timed out")
     with (
         patch("bom.application.download_latest", return_value={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML}),
@@ -458,7 +453,7 @@ def test_record_fetch_failure_keeps_old_bands_and_retries_tomorrow(gauge_record)
     ):
         asyncio.run(app.refresh())
     assert app.tags.status.value == "OK"  # the flow itself still arrived
-    assert app.tags.flow_stats.value == {"max": 10.0}
+    assert app.tags.flow_stats.value == {"low": 2.0, "high": 8.0}
     assert app.tags.flow_stats_checked.value == f"fail:{datetime.now(timezone.utc).date()}"
 
 

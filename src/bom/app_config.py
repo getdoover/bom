@@ -57,20 +57,12 @@ FLOW_DEFAULTS = {
     "flow_ranges": "Gauge history",
     "low_flow_below": None,
     "high_flow_above": None,
-    "very_high_flow_above": None,
-    "minor_flood_flow": None,
-    "moderate_flood_flow": None,
-    "major_flood_flow": None,
 }
 FLOW_RANGE_HELP = "In the display units. Leave blank to take it from the gauge's history."
 # Threshold name (see flowstats) -> RiverFlowSettings attribute holding its override.
 FLOW_RANGE_FIELDS = {
     "low": "low_flow",
     "high": "high_flow",
-    "very_high": "very_high_flow",
-    "minor": "minor_flood_flow",
-    "moderate": "moderate_flood_flow",
-    "major": "major_flood_flow",
 }
 
 
@@ -212,7 +204,7 @@ class RiverFlowSettings(config.Object):
         default=FLOW_DEFAULTS["flow_ranges"],
         description=(
             "Where the flow bands come from. Gauge history works them out from the "
-            "station's own record (percentiles, and the flow seen at each flood level). "
+            "station's own record (25th and 75th percentiles of daily flow). "
             "Manual shows the fields; any left blank still come from the history."
         ),
         advanced=True,
@@ -222,26 +214,6 @@ class RiverFlowSettings(config.Object):
     )
     high_flow = config.Number(
         "High Flow Above", default=None, description=FLOW_RANGE_HELP, show_if=manual_flow, advanced=True
-    )
-    very_high_flow = config.Number(
-        "Very High Flow Above",
-        default=None,
-        description=FLOW_RANGE_HELP,
-        show_if=manual_flow,
-        advanced=True,
-    )
-    minor_flood_flow = config.Number(
-        "Minor Flood Flow", default=None, description=FLOW_RANGE_HELP, show_if=manual_flow, advanced=True
-    )
-    moderate_flood_flow = config.Number(
-        "Moderate Flood Flow",
-        default=None,
-        description=FLOW_RANGE_HELP,
-        show_if=manual_flow,
-        advanced=True,
-    )
-    major_flood_flow = config.Number(
-        "Major Flood Flow", default=None, description=FLOW_RANGE_HELP, show_if=manual_flow, advanced=True
     )
 
 

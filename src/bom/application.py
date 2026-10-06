@@ -23,7 +23,7 @@ from .wdo import Flow, convert_flow, fetch_discharge
 
 FLOW_BACKFILL = timedelta(days=7)
 # Bump when the flow statistics change meaning, so every gauge recomputes them.
-FLOW_STATS_VERSION = 2
+FLOW_STATS_VERSION = 3
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ class Bom(Application):
             await self.update_weather(observation, history)
         await self.update_flow(flows, history)
         if flow_id:
-            await self.update_flow_ranges(flow_id, flood_levels)
+            await self.update_flow_ranges(flow_id)
 
         for ts in sorted(history):
             await self.api.create_message(
@@ -354,7 +354,7 @@ class Bom(Application):
         if latest is not None:
             await self.tags.river_flow.set(convert_flow(latest, units))
 
-    async def update_flow_ranges(self, flow_id: str, flood_levels: list[float | None]) -> None:
+    async def update_flow_ranges(self, flow_id: str) -> None:
         """Flow bands: configured values first, else from the gauge's own record.
 
         The record is read once a month (or again the next day after a failure);
@@ -365,7 +365,7 @@ class Bom(Application):
         if checked not in (f"{now:%Y-%m}/{FLOW_STATS_VERSION}", f"fail:{now.date()}"):
             try:
                 record = await asyncio.to_thread(fetch_history, self.config.flow.url.value, flow_id)
-                await self.tags.flow_stats.set(thresholds(record, flood_levels))
+                await self.tags.flow_stats.set(thresholds(record))
                 await self.tags.flow_stats_checked.set(f"{now:%Y-%m}/{FLOW_STATS_VERSION}")
             except Exception as e:
                 log.exception("Water Data Online history fetch failed: %s", e)
