@@ -15,12 +15,15 @@ RAIN_RATE_CLASSES = (
     ("Light", 0, 2.5, Colour.limegreen),
     ("Moderate", 2.5, 10, Colour.yellow),
     ("Heavy", 10, 50, Colour.orange),
-    ("Violent", 50, 100, Colour.red),
 )
 
 
-def rain_ranges(hours: float) -> list[Range]:
-    return [Range(label, lo * hours, hi * hours, c) for label, lo, hi, c in RAIN_RATE_CLASSES]
+def rain_ranges(hours: float, max_mm: float) -> list[Range]:
+    """Rate classes scaled to a period, with the top range capped at max_mm."""
+    ranges = [Range(label, lo * hours, hi * hours, c) for label, lo, hi, c in RAIN_RATE_CLASSES]
+    top = ranges[-1]
+    ranges[-1] = Range(top.label, top.min, max_mm, top.colour)
+    return ranges
 
 
 # Daily totals (mm since 9am), after BOM's daily rainfall descriptors.
@@ -28,8 +31,7 @@ RAIN_DAY_RANGES = [
     Range("Light", 0, 10, Colour.limegreen),
     Range("Moderate", 10, 25, Colour.yellow),
     Range("Heavy", 25, 50, Colour.orange),
-    Range("Very Heavy", 50, 100, Colour.red),
-    Range("Extreme", 100, 200, Colour.magenta),
+    Range("Very Heavy", 50, 75, Colour.red),
 ]
 TEMP_RANGES = [
     Range("Cold", -10, 10, Colour.blue),
@@ -144,7 +146,7 @@ class BomUI(ui.UI):
         precision=1,
         units="mm",
         icon="cloud-showers-heavy",
-        ranges=rain_ranges(1),
+        ranges=rain_ranges(1, max_mm=25),
     )
     rain_15min = ui.NumericVariable(
         "Rain Last 15 min",
@@ -152,7 +154,7 @@ class BomUI(ui.UI):
         precision=1,
         units="mm",
         icon="cloud-rain",
-        ranges=rain_ranges(0.25),
+        ranges=rain_ranges(0.25, max_mm=10),
     )
 
     weather = ui.Submodule(
