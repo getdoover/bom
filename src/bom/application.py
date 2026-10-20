@@ -6,7 +6,12 @@ import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from pydoover.models import DeploymentEvent, ManualInvokeEvent, ScheduleEvent
+from pydoover.models import (
+    DeploymentEvent,
+    ManualInvokeEvent,
+    MessageCreateEvent,
+    ScheduleEvent,
+)
 from pydoover import ui
 from pydoover.processor import Application
 from pydoover.tags.manager import LogMode
@@ -17,6 +22,7 @@ from .app_ui import BomUI, layout
 from .floodmap import find_levels
 from .ftp import download_latest
 from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
+from .live import CHANNEL as LIVE_CHANNEL, live_flows, live_levels
 from .obs import Observation, parse_observations
 from .flowstats import fetch_history, flow_ranges, thresholds
 from .wdo import Flow, convert_flow, fetch_discharge
@@ -83,14 +89,30 @@ class Bom(Application):
     async def on_manual_invoke(self, event: ManualInvokeEvent) -> None:
         await self.refresh()
 
-    async def refresh(self) -> None:
+    async def on_message_create(self, event: MessageCreateEvent) -> None:
+        if event.channel.name == LIVE_CHANNEL:
+            await self.refresh(live=event.message.data)
+
+    async def refresh(self, live: dict | None = None) -> None:
+        """Record what is new since the last run.
+
+        `live` is a batch of readings from the WaterNSW integration. Its points
+        are recorded ahead of Water Data Online's, so once they have moved
+        river_flow_time on, the day-old WDO points fall behind it and are
+        skipped; if the integration stops, WDO fills in from where it left off.
+        """
         river_id = self.config.river.station_id.value.strip()
         rain_id = self.config.rain.station_id.value.strip()
         weather_id = self.config.weather.station_id.value.strip()
         flow_id = self.config.flow.station_id.value.strip()
+        # The integration reads this to know which gauge to fetch for us.
+        await self.tags.waternsw_site.set(flow_id or None)
         if not any((river_id, rain_id, weather_id, flow_id)):
             await self.tags.status.set("No station configured")
             return
+
+        if not live or not flow_id or live.get("site") != flow_id:
+            live = {}
 
         problems = []
         flows: list[Flow] = []
@@ -100,9 +122,10 @@ class Bom(Application):
             except Exception as e:
                 log.exception("Water Data Online fetch failed: %s", e)
                 problems.append(f"Flow fetch failed: {e}")
-            else:
-                if not flows and self.tags.river_flow_time.value is None:
-                    problems.append(f"No flow data for {flow_id}")
+        live_flow = live_flows(live)
+        flows = sorted({f.time: f for f in flows + live_flow}.values(), key=lambda f: f.time)
+        if flow_id and not flows and self.tags.river_flow_time.value is None and not problems:
+            problems.append(f"No flow data for {flow_id}")
 
         letter, utc_offset = STATES[self.config.state.value]
         prefixes = []
@@ -143,6 +166,10 @@ class Bom(Application):
         )
 
         levels = [r for r in readings if r.kind == "WL" and r.station_id == river_id]
+        # Without a flood-warning gauge, the integration's level stands in. The
+        # two are kept apart because they are usually on different datums.
+        if not river_id:
+            levels = live_levels(live)
         rains = [r for r in readings if r.kind == "RN" and r.station_id == rain_id]
         if rains:
             # If both 15-min and hourly files are configured, sum only the finest.
@@ -151,7 +178,7 @@ class Bom(Application):
 
         history: dict[int, dict] = defaultdict(dict)
         flood_levels: list[float | None] = [None, None, None]
-        if river_id:
+        if river_id or levels:
             flood_levels = await self.flood_levels(river_id, letter)
             await self.update_river(levels, flood_levels, history)
         await self.update_rain(rains, utc_offset, history)
@@ -183,8 +210,9 @@ class Bom(Application):
         await self.update_warnings()
         await self.update_layout()
 
-        # Flow runs a day behind, so it only decides online/offline on its own.
-        times = [r.time for r in levels + rains]
+        # WDO flow runs a day behind, so it only decides online/offline on its
+        # own; the integration's live flow counts like any other reading.
+        times = [r.time for r in levels + rains] + [f.time for f in live_flow]
         if observation:
             times.append(observation.time)
         if not times and flows:
@@ -201,21 +229,20 @@ class Bom(Application):
         """Flag readings older than each source's Stale After, and a river in flood."""
         now_ms = to_ms(datetime.now(timezone.utc))
 
-        def fresh(section, time_ms: int | None) -> bool:
-            if not section.station_id.value.strip():
+        def fresh(section, time_ms: int | None, configured: bool = False) -> bool:
+            if not (configured or section.station_id.value.strip()):
                 return True  # not configured, nothing to be stale
             limit_ms = section.stale_after_hours.value * 3600_000
             return time_ms is not None and now_ms - time_ms <= limit_ms
 
         c, t = self.config, self.tags
-        await t.river_level_ok.set(fresh(c.river, t.river_level_time.value))
+        # A level from the integration is held to the river's limit too.
+        live_level = bool(c.flow.station_id.value.strip()) and t.river_level_time.value is not None
+        await t.river_level_ok.set(fresh(c.river, t.river_level_time.value, live_level))
         await t.river_flow_ok.set(fresh(c.flow, t.river_flow_time.value))
         await t.rain_ok.set(fresh(c.rain, t.rain_time.value))
         await t.weather_ok.set(fresh(c.weather, t.weather_time.value))
-        await t.flood_ok.set(
-            not c.river.station_id.value.strip()
-            or t.river_flood_class.value in (None, "Below flood level")
-        )
+        await t.flood_ok.set(t.river_flood_class.value in (None, "Below flood level"))
 
     async def update_layout(self) -> None:
         """Republish the UI when this run's data changes which parts it shows.
@@ -241,7 +268,7 @@ class Bom(Application):
                 river.moderate_flood_level.value,
                 river.major_flood_level.value,
             ]
-        if None not in configured:
+        if None not in configured or not river_id:
             return configured
 
         today = datetime.now(timezone.utc).date().isoformat()
@@ -357,19 +384,21 @@ class Bom(Application):
     async def update_flow_ranges(self, flow_id: str) -> None:
         """Flow bands: configured values first, else from the gauge's own record.
 
-        The record is read once a month (or again the next day after a failure);
-        the bands are rebuilt every run so a config change shows on the next one.
+        The record is read once a month, again when the station changes, or the
+        next day after a failure; the bands are rebuilt every run so a config
+        change shows on the next one.
         """
         now = datetime.now(timezone.utc)
+        current = f"{now:%Y-%m}/{FLOW_STATS_VERSION}/{flow_id}"
         checked = self.tags.flow_stats_checked.value
-        if checked not in (f"{now:%Y-%m}/{FLOW_STATS_VERSION}", f"fail:{now.date()}"):
+        if checked not in (current, f"fail:{now.date()}/{flow_id}"):
             try:
                 record = await asyncio.to_thread(fetch_history, self.config.flow.url.value, flow_id)
                 await self.tags.flow_stats.set(thresholds(record))
-                await self.tags.flow_stats_checked.set(f"{now:%Y-%m}/{FLOW_STATS_VERSION}")
+                await self.tags.flow_stats_checked.set(current)
             except Exception as e:
                 log.exception("Water Data Online history fetch failed: %s", e)
-                await self.tags.flow_stats_checked.set(f"fail:{now.date()}")
+                await self.tags.flow_stats_checked.set(f"fail:{now.date()}/{flow_id}")
 
         units = self.config.flow.units.value
         edges = {k: convert_flow(v, units) for k, v in (self.tags.flow_stats.value or {}).items()}

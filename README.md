@@ -96,6 +96,44 @@ group holding the gauges (extended permissions). Its widget (`widget/`) shows:
 It reads each device's BoM Station install (found by application
 name), so the gauges need no extra setup.
 
+## WaterNSW Water Data (opt-in live data)
+
+A third app, `waternsw`, brings NSW gauges live: the same readings
+WaterInsights shows, from the WaterNSW Water Data API, instead of Water Data
+Online's day-and-a-half lag. It needs the organisation's own subscription key
+from [api-portal.waternsw.com.au](https://api-portal.waternsw.com.au)
+(subscribe to the **Water Data** product).
+
+Install it once per organisation, on a device of its own, with the key and
+extended permissions **Apps Installed: BoM Station**, so every gauge in the
+org is covered. Every hour it:
+
+1. reads each BoM Station's `waternsw_site` tag, which is its River Flow
+   station number (the WaterNSW gauge number, e.g. `418002`);
+2. asks WaterNSW for every 15-minute reading loaded since its last successful
+   run, one request per 20 gauges (the first run reaches back 40 hours, past
+   WDO's lag, so the switch-over leaves no gap);
+3. posts each gauge's readings (all variables: level, flow, water temperature,
+   dissolved oxygen, logger voltage and so on, with quality codes) to the
+   `waternsw` channel of every device on that gauge.
+
+The BoM Station subscribes to `waternsw` and records them straight away:
+
+- **Flow** is recorded ahead of WDO's. Once live points have moved
+  `river_flow_time` on, WDO's day-old points fall behind it and are skipped, so
+  nothing is recorded twice; if the integration stops, WDO fills in again from
+  where it left off.
+- **Level** is used only when no River Level station is set. Flood-warning
+  levels and WaterNSW's gauge heights are usually on different datums, so the
+  two are never mixed. Flood bands then come from Manual flood levels only.
+- The other variables stay in the channel.
+
+WaterNSW's free Basic tier allows 29 requests a day and 5 a minute (each page
+of a response counts), which hourly fetches of up to 20 gauges fit. For more
+gauges or faster updates, ask waterdataservices@waternsw.com.au for the
+Elevated tier (100 a day, 20 a minute). The QLD border gauges (e.g. `416201A`
+Goondiwindi) come through too.
+
 ## Possible future data sources
 
 Also on BOM's public FTP feed (`/anon/gen/fwo`), not yet used here:

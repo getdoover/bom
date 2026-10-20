@@ -80,7 +80,10 @@ def layout(config, tags) -> str:
     units, with the fingerprint of its bands (carried literally, like the level's).
     """
     parts = []
-    if config.river.station_id.value.strip() and tags.river_level.value is not None:
+    # A level comes from the flood-warning gauge, or the WaterNSW integration
+    # on the flow gauge when there is none.
+    gauges = config.river.station_id.value.strip() or config.flow.station_id.value.strip()
+    if gauges and tags.river_level.value is not None:
         parts.append("river")
         if tags.river_ranges.value:
             digest = hashlib.md5(json.dumps(tags.river_ranges.value, sort_keys=True).encode())

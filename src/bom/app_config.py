@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydoover import config
 from pydoover.config import NotSet
-from pydoover.processor import ScheduleConfig
+from pydoover.processor import ManySubscriptionConfig, ScheduleConfig
 
 from .wdo import AS_RECORDED, DEFAULT_FLOW_UNIT, DEFAULT_URL, FLOW_UNITS, HOURLY_MEAN
 
@@ -176,7 +176,9 @@ class RiverFlowSettings(config.Object):
         description=(
             "Water Data Online station number, e.g. 418001. This is the water agency's "
             "number for the gauge, usually different from the BOM river gauge number. "
-            "Leave blank to skip. Flow is published about a day behind."
+            "Leave blank to skip. Flow is published about a day behind; with the WaterNSW "
+            "integration installed, NSW gauges also come through live, with their level "
+            "when no River Level station is set."
         ),
     )
     units = config.Enum(
@@ -245,6 +247,8 @@ class BomConfig(config.Schema):
     schedule = ScheduleConfig(
         allowed_modes=["rate", "cron"], default="rate(15 minutes)", advanced=True
     )
+    # Live readings from the WaterNSW integration, recorded as they arrive.
+    subscriptions = ManySubscriptionConfig(default=["waternsw"], hidden=True)
     position = config.ApplicationPosition()
     default_open = config.ApplicationDefaultOpen()
 

@@ -43,5 +43,27 @@
                 "arm64"
             ]
         }
+    },
+    "waternsw": {
+        "name": "waternsw",
+        "display_name": "WaterNSW Water Data",
+        "type": "PRO",
+        "visibility": "PUB",
+        "allow_many": false,
+        "description": "Live river level and flow for an organisation's BoM Station gauges, from the WaterNSW Water Data API (the data behind WaterInsights). Opt-in: needs a WaterNSW subscription key.",
+        "long_description": "README.md",
+        "depends_on": [],
+        "export_config_command": "export-config-waternsw",
+        "export_ui_command": "export-ui-waternsw",
+        "lambda_config": {
+            "Environment": {},
+            "Runtime": "python3.13",
+            "Timeout": 300,
+            "Handler": "src.waternsw.handler",
+            "MemorySize": 128,
+            "Architectures": [
+                "arm64"
+            ]
+        }
     }
 }

@@ -135,7 +135,7 @@ def make_app() -> Bom:
         "weather_pressure", "weather_wind_dir", "weather_wind_speed", "weather_wind_gust",
         "weather_time", "weather_station",
         "status", "rain_day", "flood_map_page", "flood_map_levels", "flood_map_checked",
-        "river_level_ok", "river_flow_ok", "rain_ok", "weather_ok", "flood_ok",
+        "river_level_ok", "river_flow_ok", "rain_ok", "weather_ok", "flood_ok", "waternsw_site",
     )})()
 
     async def ping_connection(**kwargs) -> None:
@@ -188,7 +188,7 @@ def test_refresh_records_history_and_totals(gauge_record) -> None:
     assert [(b["label"], b["min"], b["max"]) for b in app.tags.river_flow_ranges.value] == [
         ("Low", 0, 43286.4), ("Normal", 43286.4, 129600.0), ("High", 129600.0, 194400.0)
     ]
-    assert app.tags.flow_stats_checked.value == datetime.now(timezone.utc).strftime("%Y-%m") + "/3"
+    assert app.tags.flow_stats_checked.value == datetime.now(timezone.utc).strftime("%Y-%m") + "/3/418001"
 
     assert app.tags.status.value == "OK"
     assert app.tags.weather_station.value == "MOREE AERO"
@@ -454,7 +454,7 @@ def test_record_fetch_failure_keeps_old_bands_and_retries_tomorrow(gauge_record)
         asyncio.run(app.refresh())
     assert app.tags.status.value == "OK"  # the flow itself still arrived
     assert app.tags.flow_stats.value == {"low": 2.0, "high": 8.0}
-    assert app.tags.flow_stats_checked.value == f"fail:{datetime.now(timezone.utc).date()}"
+    assert app.tags.flow_stats_checked.value == f"fail:{datetime.now(timezone.utc).date()}/418001"
 
 
 def test_changing_units_reconverts_the_current_flow_without_a_new_point() -> None:
