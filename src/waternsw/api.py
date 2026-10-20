@@ -7,6 +7,7 @@ counts as one.
 """
 
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -24,11 +25,21 @@ MAX_SPAN = timedelta(hours=168)
 FETCH_TIMEOUT = 30
 # Basic allows 5 requests a minute; pages of one fetch are spaced to suit.
 PAGE_PAUSE = 12.5
+# A 429 says how long to wait ("Try again in 8 seconds"); a page is retried
+# that many times before the fetch gives up.
+RATE_LIMIT_RETRIES = 3
+RETRY_AFTER = re.compile(r"[Tt]ry again in (\d+) seconds?")
 NO_DATA = "No data found"
 
 
 class WaterNswError(Exception):
     pass
+
+
+class RateLimited(WaterNswError):
+    def __init__(self, message: str, retry_after: float):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 def format_time(t: datetime) -> str:
@@ -40,6 +51,17 @@ def parse_time(s: str) -> datetime:
 
 
 def _get(url: str, key: str, timeout: float) -> dict:
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        try:
+            return _get_once(url, key, timeout)
+        except RateLimited as e:
+            if attempt == RATE_LIMIT_RETRIES:
+                raise
+            time.sleep(e.retry_after + 1)
+    raise AssertionError("unreachable")
+
+
+def _get_once(url: str, key: str, timeout: float) -> dict:
     # Page links come back with literal spaces in their timestamps.
     request = urllib.request.Request(
         url.replace(" ", "%20"), headers={"Ocp-Apim-Subscription-Key": key}
@@ -51,6 +73,9 @@ def _get(url: str, key: str, timeout: float) -> dict:
         body = e.read().decode(errors="replace")
         if NO_DATA in body:
             return {}
+        wait = RETRY_AFTER.search(body)
+        if e.code == 429 and wait:
+            raise RateLimited(f"HTTP 429: {body[:200]}", float(wait.group(1))) from e
         try:
             detail = json.loads(body)
             message = "; ".join(

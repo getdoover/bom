@@ -229,3 +229,28 @@ def test_config_schema() -> None:
     fields = set(props["dv_proc_extended_permissions"]["x-extraDeviceFields"])
     assert {"app_installs__name", "app_installs__application_name"} <= fields
     assert handler
+
+
+def test_a_rate_limited_page_waits_and_retries() -> None:
+    limited = http_error(429, {"statusCode": 429, "message": "Rate limit is exceeded. Try again in 8 seconds."})
+    ok = FakeResponse(json.dumps({"records": RECORDS, "qualities": QUALITIES}).encode())
+    with (
+        patch("urllib.request.urlopen", side_effect=[limited, ok]),
+        patch("waternsw.api.time.sleep") as sleep,
+    ):
+        records, _ = fetch_since("key", ["418002"], datetime.now(timezone.utc), pause=0)
+    assert records == RECORDS
+    sleep.assert_called_once_with(9)
+
+
+def test_rate_limiting_gives_up_after_its_retries() -> None:
+    def limited(*args, **kwargs):
+        raise http_error(429, {"message": "Rate limit is exceeded. Try again in 2 seconds."})
+
+    with (
+        patch("urllib.request.urlopen", side_effect=limited) as urlopen,
+        patch("waternsw.api.time.sleep"),
+        pytest.raises(WaterNswError, match="429"),
+    ):
+        fetch_since("key", ["418002"], datetime.now(timezone.utc), pause=0)
+    assert urlopen.call_count == 4  # the first try and three retries
