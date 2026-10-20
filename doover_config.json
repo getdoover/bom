@@ -44,8 +44,8 @@
             ]
         }
     },
-    "waternsw": {
-        "name": "waternsw",
+    "waternsw_integration": {
+        "name": "waternsw_integration",
         "display_name": "WaterNSW Water Data",
         "type": "INT",
         "visibility": "PUB",

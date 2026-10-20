@@ -16,5 +16,5 @@ class WaterNswUI(ui.UI):
 
 def export() -> None:
     WaterNswUI(None, None, None).export(
-        Path(__file__).parents[2] / "doover_config.json", "waternsw"
+        Path(__file__).parents[2] / "doover_config.json", "waternsw_integration"
     )

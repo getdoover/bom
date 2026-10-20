@@ -98,7 +98,7 @@ name), so the gauges need no extra setup.
 
 ## WaterNSW Water Data (opt-in live data)
 
-A third app, the `waternsw` integration, brings NSW gauges live: the same readings
+A third app, the `waternsw_integration` integration ("WaterNSW Water Data"), brings NSW gauges live: the same readings
 WaterInsights shows, from the WaterNSW Water Data API, instead of Water Data
 Online's day-and-a-half lag. It needs the organisation's own subscription key
 from [api-portal.waternsw.com.au](https://api-portal.waternsw.com.au)

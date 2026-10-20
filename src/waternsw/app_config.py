@@ -31,4 +31,4 @@ class WaterNswConfig(config.Schema):
 
 
 def export() -> None:
-    WaterNswConfig.export(Path(__file__).parents[2] / "doover_config.json", "waternsw")
+    WaterNswConfig.export(Path(__file__).parents[2] / "doover_config.json", "waternsw_integration")
