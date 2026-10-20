@@ -104,7 +104,7 @@ Online's day-and-a-half lag. It needs the organisation's own subscription key
 from [api-portal.waternsw.com.au](https://api-portal.waternsw.com.au)
 (subscribe to the **Water Data** product).
 
-Install it once per organisation, on a device of its own, with the key and
+Install it once on the organisation (not on a device), with the key and
 extended permissions **Apps Installed: BoM Station**, so every gauge in the
 org is covered. Every hour it:
 

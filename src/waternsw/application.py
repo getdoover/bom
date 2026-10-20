@@ -11,16 +11,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from pydoover.models import (
-    ConnectionConfig,
-    ConnectionDetermination,
-    ConnectionStatus,
-    ConnectionType,
-    DeploymentEvent,
-    ManualInvokeEvent,
-    ScheduleEvent,
-)
-from pydoover.models.data.connection import ConnectionDisplay
+from pydoover.models import DeploymentEvent, ManualInvokeEvent, ScheduleEvent
 from pydoover.processor import Application
 
 from .api import MAX_SITES, MAX_SPAN, PAGE_PAUSE, by_site, fetch_since
@@ -65,18 +56,9 @@ class WaterNsw(Application):
     config: WaterNswConfig
     tags: WaterNswTags
 
+    # Installed on the organisation rather than a device, so there is no
+    # connection status to keep.
     async def on_deployment(self, event: DeploymentEvent) -> None:
-        # Like the dashboard, there is no device behind this, so hide its
-        # connection status rather than letting it read as offline.
-        await self.api.ping_connection_at(
-            datetime.now(timezone.utc),
-            ConnectionStatus.continuous_online_no_ping,
-            ConnectionDetermination.online,
-            user_agent="bom;waternsw",
-        )
-        await self.api.update_connection_config(
-            ConnectionConfig(ConnectionType.periodic, display=ConnectionDisplay.never)
-        )
         await self.refresh()
 
     async def on_schedule(self, event: ScheduleEvent) -> None:
