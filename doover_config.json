@@ -47,7 +47,7 @@
     "waternsw": {
         "name": "waternsw",
         "display_name": "WaterNSW Water Data",
-        "type": "PRO",
+        "type": "INT",
         "visibility": "PUB",
         "allow_many": false,
         "description": "Live river level and flow for an organisation's BoM Station gauges, from the WaterNSW Water Data API (the data behind WaterInsights). Opt-in: needs a WaterNSW subscription key.",

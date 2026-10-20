@@ -56,8 +56,8 @@ class WaterNsw(Application):
     config: WaterNswConfig
     tags: WaterNswTags
 
-    # Installed on the organisation rather than a device, so there is no
-    # connection status to keep.
+    # An integration is installed on the organisation, not a device, so there
+    # is no connection status to keep.
     async def on_deployment(self, event: DeploymentEvent) -> None:
         await self.refresh()
 
