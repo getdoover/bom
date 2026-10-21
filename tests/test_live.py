@@ -71,7 +71,7 @@ def test_live_flow_moves_the_mark_so_wdo_falls_behind() -> None:
     # WDO's week and the live points are both new on the first run.
     assert app.tags.river_flow_time.value == ms(T2)
     assert app.tags.river_flow.value == pytest.approx(864.0)
-    assert history(app)[ms(T2)]["river_flow"] == pytest.approx(864.0)
+    assert history(app)[ms(T2) + 2]["river_flow"] == pytest.approx(864.0)
     assert app.tags.waternsw_site.value == "418001"
 
     # The next scheduled run asks WDO only for what follows the live mark.
@@ -105,7 +105,7 @@ def test_live_level_stands_in_without_a_flood_warning_gauge() -> None:
     assert app.tags.river_datum.value == "LGH"
     assert app.tags.river_trend.value == "rising"
     assert app.tags.river_level_time.value == ms(T2)
-    assert history(app)[ms(T1)]["river_level"] == 1.50
+    assert history(app)[ms(T1) + 3]["river_level"] == 1.50
     # No flood levels without a flood-warning gauge or manual ones.
     assert app.tags.river_flood_class.value is None
     assert app.tags.flood_ok.value is True
