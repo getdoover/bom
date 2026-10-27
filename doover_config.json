@@ -65,5 +65,27 @@
                 "arm64"
             ]
         }
+    },
+    "qldwater_integration": {
+        "name": "qldwater_integration",
+        "display_name": "Queensland Water Monitoring",
+        "type": "INT",
+        "visibility": "PUB",
+        "allow_many": false,
+        "description": "Live river level, flow and rainfall for an organisation's Queensland BoM Station gauges, from the state's Water Monitoring Information Portal. Opt-in; no key needed.",
+        "long_description": "README.md",
+        "depends_on": [],
+        "export_config_command": "export-config-qldwater",
+        "export_ui_command": "export-ui-qldwater",
+        "lambda_config": {
+            "Environment": {},
+            "Runtime": "python3.13",
+            "Timeout": 300,
+            "Handler": "src.qldwater.handler",
+            "MemorySize": 128,
+            "Architectures": [
+                "arm64"
+            ]
+        }
     }
 }

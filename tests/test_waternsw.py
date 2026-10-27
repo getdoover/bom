@@ -107,13 +107,16 @@ DEVICE_MAP = {
     "13": {"name": "twin", "app_installs": [{"name": "bom_1", "application_name": "bom"}]},
     "14": {"name": "pump", "app_installs": [{"name": "pump_1", "application_name": "pump"}]},
     "15": {"name": "no-flow", "app_installs": [{"name": "bom_1", "application_name": "bom"}]},
+    "16": {"name": "qld", "app_installs": [{"name": "bom_1", "application_name": "bom"}]},
     "99": {"name": "integration", "app_installs": [{"name": "waternsw_1", "application_name": "waternsw"}]},
 }
-SITES = {11: "418002", 12: "416201A", 13: "418002", 15: None}
+SITES = {11: "418002", 12: "416201A", 13: "418002", 15: None, 16: "416201A"}
+# Goondiwindi again, but on a device set to QLD: Queensland's integration feeds it.
+STATES = {16: "QLD"}
 
 
 def test_bom_installs() -> None:
-    assert bom_installs(DEVICE_MAP) == {11: "bom_1", 12: "bom_2", 13: "bom_1", 15: "bom_1"}
+    assert bom_installs(DEVICE_MAP) == {11: "bom_1", 12: "bom_2", 13: "bom_1", 15: "bom_1", 16: "bom_1"}
     assert bom_installs(None) == {}
 
 
@@ -127,7 +130,8 @@ class FakeApi:
         if agent_id in self.fail_agents:
             raise OSError("forbidden")
         key = bom_installs(DEVICE_MAP)[agent_id]
-        return SimpleNamespace(data={key: {"waternsw_site": SITES[agent_id]}, "other_1": {}})
+        tags = {"live_site": SITES[agent_id], "state": STATES.get(agent_id, "NSW / ACT")}
+        return SimpleNamespace(data={key: tags, "other_1": {}})
 
     async def create_message(self, channel, data, agent_id=None):
         self.messages.append((channel, data, agent_id))
@@ -170,7 +174,8 @@ def test_refresh_hands_each_gauge_its_readings() -> None:
 
     posted = {(agent, data["site"]) for channel, data, agent in app.api.messages}
     assert {c for c, _, _ in app.api.messages} == {"waternsw"}
-    # Both devices on the Moree gauge get it; the device with no flow station does not.
+    # Both devices on the Moree gauge get it; the device with no flow station
+    # does not, nor the Queensland one on Goondiwindi.
     assert posted == {(11, "418002"), (13, "418002"), (12, "416201A")}
     assert app.tags.gauges.value == 3
     assert app.tags.readings.value == 4
@@ -185,7 +190,7 @@ def test_refresh_asks_from_the_last_fetch_and_batches_by_twenty() -> None:
     app.received_deployment_config = {"DEVICE_MAP": many}
 
     async def fetch_channel_aggregate(channel, agent_id=None):
-        return SimpleNamespace(data={"bom_1": {"waternsw_site": f"4180{agent_id}"}})
+        return SimpleNamespace(data={"bom_1": {"live_site": f"4180{agent_id}"}})
 
     app.api.fetch_channel_aggregate = fetch_channel_aggregate
     with (

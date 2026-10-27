@@ -1,14 +1,15 @@
-"""Live gauge readings handed over by the WaterNSW integration.
+"""Live gauge readings handed over by the WaterNSW or Queensland integration.
 
-The integration posts each gauge's new readings to the device's `waternsw`
-channel, one message per fetch:
+An integration posts each gauge's new readings to the device's `waternsw` or
+`qldwater` channel, one message per fetch:
 
     {"site": "418002",
      "series": {"FlowRate": {"unit": "ML/day", "points": [[ms, value, quality], ...]},
                 "StreamWaterLevel": {"unit": "m", "points": [...]}, ...},
      "qualities": {"125": "Auto QC - Passed", ...}}
 
-Only level and flow are recorded here; the other variables stay in the channel.
+Only level and flow are recorded here; the other variables (rainfall from
+Queensland, water quality from WaterNSW) stay in the channel.
 """
 
 from datetime import datetime, timezone
@@ -16,7 +17,7 @@ from datetime import datetime, timezone
 from .hcs import Reading
 from .wdo import TO_CUMEC, Flow
 
-CHANNEL = "waternsw"
+CHANNELS = ("waternsw", "qldwater")
 FLOW = "FlowRate"
 LEVEL = "StreamWaterLevel"
 

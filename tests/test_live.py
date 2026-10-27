@@ -40,12 +40,20 @@ def reconfigure(app, **sections) -> None:
 
 
 def run(app, live=None, wdo=FLOWS, files=None):
+    """A scheduled run with BOM's files and WDO's flow, or a live batch arriving."""
     with (
-        patch("bom.application.download_latest", return_value=files or {}),
+        patch("bom.application.download_latest", return_value=files or {}) as ftp,
         patch("bom.application.find_levels", return_value=("IDN65195.html", [1.0, 2.0, 3.0])),
         patch("bom.application.fetch_discharge", return_value=wdo) as fetch,
     ):
-        asyncio.run(app.refresh(live=live))
+        if live is None:
+            asyncio.run(app.refresh())
+        else:
+            asyncio.run(app.record_live(live))
+    # A live batch is recorded on its own: BOM and WDO are never asked.
+    if live is not None:
+        ftp.assert_not_called()
+        fetch.assert_not_called()
     return fetch
 
 
@@ -68,11 +76,9 @@ def test_live_flow_moves_the_mark_so_wdo_falls_behind() -> None:
     app = make_app()
     run(app, live=payload())
 
-    # WDO's week and the live points are both new on the first run.
     assert app.tags.river_flow_time.value == ms(T2)
     assert app.tags.river_flow.value == pytest.approx(864.0)
     assert history(app)[ms(T2) + 2]["river_flow"] == pytest.approx(864.0)
-    assert app.tags.waternsw_site.value == "418001"
 
     # The next scheduled run asks WDO only for what follows the live mark.
     app.api.messages.clear()
@@ -83,17 +89,49 @@ def test_live_flow_moves_the_mark_so_wdo_falls_behind() -> None:
     assert app.tags.river_flow_time.value == ms(T2)
 
 
-def test_live_flow_keeps_the_device_online() -> None:
-    app = make_app()
-    reconfigure(app, river_flow={"station_id": "418001"})
+def pinged(app) -> list:
     pings = []
 
     async def ping_connection(**kwargs) -> None:
-        pings.append(kwargs["online_at"])
+        pings.append((kwargs["online_at"], kwargs["offline_at"] - kwargs["online_at"]))
 
     app.ping_connection = ping_connection
+    return pings
+
+
+def test_live_flow_keeps_the_device_online() -> None:
+    app = make_app()
+    reconfigure(app, river_flow={"station_id": "418001"})
+    pings = pinged(app)
     run(app, live=payload())
-    assert pings == [T2]
+    # Hourly live data gets at least three hours, not the two-hour default.
+    assert pings == [(T2, timedelta(hours=3))]
+
+    # The scheduled run finds no BOM readings and pings from the recorded flow
+    # mark, which the live batch moved on, so the device stays online.
+    run(app)
+    assert pings[-1] == (T2, timedelta(hours=3))
+
+
+def test_bom_readings_keep_the_configured_offline_wait() -> None:
+    app = make_app()
+    reconfigure(app, river_level={"station_id": "068212"}, river_flow={"station_id": "418001"})
+    pings = pinged(app)
+    run(app, files={"IDN65910_1.hcs": HCS})
+    assert pings[-1][1] == timedelta(hours=2)
+    # A live batch keeps the device online on the live wait; the next scheduled
+    # run pings from the BOM level again with the configured one.
+    run(app, live=payload())
+    assert pings[-1][1] == timedelta(hours=3)
+    run(app, files={"IDN65910_1.hcs": HCS})
+    assert pings[-1][1] == timedelta(hours=2)
+
+
+def test_a_live_batch_only_records_itself() -> None:
+    app = make_app()
+    run(app, live=payload())  # run() asserts no BOM or WDO fetch
+    # Nor does it touch the status the scheduled run left.
+    assert app.tags.status.value is None
 
 
 def test_live_level_stands_in_without_a_flood_warning_gauge() -> None:
@@ -129,7 +167,8 @@ def test_live_level_takes_manual_flood_levels() -> None:
 
 def test_flood_warning_gauge_level_wins_over_live() -> None:
     app = make_app()  # 068212 is the flood-warning gauge
-    run(app, live=payload(), files={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML})
+    run(app, files={"IDN65910_1.hcs": HCS, "IDN60920.xml": OBS_XML})
+    run(app, live=payload())
     assert app.tags.river_level.value == 1.05
     assert app.tags.river_datum.value == "AHD"
     # Flow still comes through live.
@@ -142,23 +181,31 @@ def test_live_readings_for_another_gauge_are_ignored() -> None:
     assert app.tags.river_flow_time.value is None
 
 
-def test_only_the_waternsw_channel_triggers_a_refresh() -> None:
+def test_only_the_live_channels_trigger_a_refresh() -> None:
     app = make_app()
     calls = []
 
-    async def refresh(live=None) -> None:
+    async def record_live(live) -> None:
         calls.append(live)
 
-    app.refresh = refresh
+    app.record_live = record_live
 
     def event(name: str):
         return SimpleNamespace(channel=SimpleNamespace(name=name), message=SimpleNamespace(data=payload()))
 
     asyncio.run(app.on_message_create(event("waternsw")))
+    asyncio.run(app.on_message_create(event("qldwater")))
     asyncio.run(app.on_message_create(event("tag_values")))
-    assert calls == [payload()]
+    assert calls == [payload(), payload()]
 
 
-def test_bom_subscribes_to_the_waternsw_channel() -> None:
+def test_bom_subscribes_to_the_live_channels() -> None:
     schema = BomConfig.to_schema()["properties"]["dv_proc_subscriptions"]
-    assert schema["default"] == ["waternsw"]
+    assert schema["default"] == ["waternsw", "qldwater"]
+
+
+def test_bom_publishes_its_state_for_the_integrations() -> None:
+    app = make_app()
+    run(app)
+    assert app.tags.state.value == "NSW / ACT"
+    assert app.tags.live_site.value == "418001"

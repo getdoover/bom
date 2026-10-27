@@ -55,5 +55,7 @@ class BomTags(tags.Tags):
     flow_stats_checked = tags.String(default=None)
     # The UI layout last published (see app_ui.layout), to republish on change.
     ui_layout = tags.String(default=None)
-    # The gauge the WaterNSW integration should fetch for this device.
-    waternsw_site = tags.String(default=None)
+    # The gauge a live data integration should fetch for this device (its River
+    # Flow station), and the state that says which integration that is.
+    live_site = tags.String(default=None)
+    state = tags.String(default=None)

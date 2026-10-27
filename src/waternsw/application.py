@@ -21,6 +21,9 @@ from .app_ui import WaterNswUI
 
 BOM_APP_NAME = "bom"
 CHANNEL = "waternsw"
+# Devices in these states have their own live integration (see qldwater), so
+# they are not fed from here even where WaterNSW carries the gauge.
+OTHER_STATES = {"QLD"}
 # The first fetch reaches back past Water Data Online's lag (about a day and a
 # half), so the switch-over leaves no hole in a gauge's flow history. It costs
 # several pages, once.
@@ -129,7 +132,8 @@ class WaterNsw(Application):
     async def find_gauges(self) -> dict[str, list[int]]:
         """{WaterNSW site id: agent ids of the devices following it}.
 
-        Each BoM Station publishes the gauge it wants as its waternsw_site tag.
+        Each BoM Station publishes the gauge it wants as its live_site tag,
+        and its state; Queensland devices are left to their own integration.
         """
         installs = bom_installs(self.received_deployment_config.get("DEVICE_MAP"))
         installs.pop(self.agent_id, None)
@@ -139,7 +143,10 @@ class WaterNsw(Application):
         async def site_of(agent_id: int, app_key: str) -> str | None:
             async with limit:
                 aggregate = await self.api.fetch_channel_aggregate("tag_values", agent_id=agent_id)
-            return ((aggregate.data or {}).get(app_key) or {}).get("waternsw_site")
+            tags = (aggregate.data or {}).get(app_key) or {}
+            if tags.get("state") in OTHER_STATES:
+                return None
+            return tags.get("live_site")
 
         agents = list(installs)
         found = await asyncio.gather(

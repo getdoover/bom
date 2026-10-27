@@ -108,8 +108,9 @@ Install it once on the organisation (not on a device), with the key and
 extended permissions **Apps Installed: BoM Station**, so every gauge in the
 org is covered. Every hour it:
 
-1. reads each BoM Station's `waternsw_site` tag, which is its River Flow
-   station number (the WaterNSW gauge number, e.g. `418002`);
+1. reads each BoM Station's `live_site` tag, which is its River Flow
+   station number (the WaterNSW gauge number, e.g. `418002`), and its `state`;
+   devices set to QLD are left to the Queensland integration below;
 2. asks WaterNSW for every 15-minute reading loaded since its last successful
    run, one request per 20 gauges (the first run reaches back 40 hours, past
    WDO's lag, so the switch-over leaves no gap);
@@ -117,7 +118,10 @@ org is covered. Every hour it:
    dissolved oxygen, logger voltage and so on, with quality codes) to the
    `waternsw` channel of every device on that gauge.
 
-The BoM Station subscribes to `waternsw` and records them straight away:
+The BoM Station subscribes to `waternsw` and records each batch as it
+arrives, on its own: it does not re-read BOM's FTP or WDO for it, so the one
+integration feeding every gauge in an organisation in the same minute does
+not send them all to BOM at once.
 
 - **Flow** is recorded ahead of WDO's. Once live points have moved
   `river_flow_time` on, WDO's day-old points fall behind it and are skipped, so
@@ -127,12 +131,53 @@ The BoM Station subscribes to `waternsw` and records them straight away:
   levels and WaterNSW's gauge heights are usually on different datums, so the
   two are never mixed. Flood bands then come from Manual flood levels only.
 - The other variables stay in the channel.
+- A gauge with no BOM station hears only from the integration, hourly, so it
+  is allowed at least 3 hours without a reading before it shows offline,
+  whatever the shorter **Offline After** meant for BOM's 15-minute feed says.
 
 WaterNSW's free Basic tier allows 29 requests a day and 5 a minute (each page
 of a response counts), which hourly fetches of up to 20 gauges fit. For more
 gauges or faster updates, ask waterdataservices@waternsw.com.au for the
 Elevated tier (100 a day, 20 a minute). The QLD border gauges (e.g. `416201A`
-Goondiwindi) come through too.
+Goondiwindi) come through too, for devices set to NSW / ACT.
+
+## Queensland Water Monitoring (opt-in live data)
+
+A fourth app, the `qldwater_integration` integration ("Queensland Water
+Monitoring"), does the same for Queensland gauges from the state's
+[Water Monitoring Information Portal](https://water-monitoring.information.qld.gov.au/)
+(WMIP): hourly telemetry of level, flow and rainfall, about half an hour
+behind the gauge, instead of Water Data Online's day-and-a-half lag. The
+portal's JSON web service is open, CC BY 4.0, and needs no key, so the
+integration has no settings beyond its schedule.
+
+Install it once on the organisation (not on a device) with extended
+permissions **Apps Installed: BoM Station**. Every hour at half past (the
+gauges transmit on the hour, and the department asks for one call an hour) it:
+
+1. reads each BoM Station's `live_site` and `state` tags, and keeps the
+   QLD devices. The site is the River Flow station number, which for
+   Queensland is the portal's site ID too (e.g. `143001C`, Brisbane River at
+   Savages Crossing; Water Data Online keeps the suffix letter);
+2. asks the portal for every point logged since two hours before its last
+   successful run (a gauge logs sub-hourly points but sends them hourly), one
+   request per variable per 50 gauges: level (`100.00`), flow rated from level
+   on the fly in ML/day (`100.00` to `141.00`) and rainfall (`10.00`), all from
+   the telemetry datasource `TE`. The first run reaches back 40 hours;
+3. posts each gauge's readings to the `qldwater` channel of every device on
+   that gauge, in the same shape as the WaterNSW integration's.
+
+The BoM Station records level and flow from `qldwater` exactly as it does from
+`waternsw` (see above, including the 3-hour offline allowance); rainfall stays
+in the channel for now. Telemetry is
+unverified (quality code 130, "Not coded value"); the department's verified
+record stays in Water Data Online.
+
+Only about 1,500 of the portal's sites have telemetry. A gauge the portal does
+not know is reported in the integration's status ("No telemetry for ...")
+without stopping the others. The web service is monitored for abuse, so leave
+the schedule hourly; a test server is available on request to
+wmis@dlgwv.qld.gov.au.
 
 ## Possible future data sources
 

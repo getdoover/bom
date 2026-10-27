@@ -177,8 +177,8 @@ class RiverFlowSettings(config.Object):
             "Water Data Online station number, e.g. 418001. This is the water agency's "
             "number for the gauge, usually different from the BOM river gauge number. "
             "Leave blank to skip. Flow is published about a day behind; with the WaterNSW "
-            "integration installed, NSW gauges also come through live, with their level "
-            "when no River Level station is set."
+            "or Queensland integration installed, that state's gauges also come through "
+            "live, with their level when no River Level station is set."
         ),
     )
     units = config.Enum(
@@ -240,15 +240,20 @@ class BomConfig(config.Schema):
         "Offline After (minutes)",
         default=120.0,
         minimum=15.0,
-        description="Show the device offline if BOM has no new reading for this long.",
+        description=(
+            "Show the device offline if no new reading arrives for this long. A gauge "
+            "with no BOM station, fed only by a live integration, reports hourly and is "
+            "allowed at least 3 hours."
+        ),
         advanced=True,
     )
 
     schedule = ScheduleConfig(
         allowed_modes=["rate", "cron"], default="rate(15 minutes)", advanced=True
     )
-    # Live readings from the WaterNSW integration, recorded as they arrive.
-    subscriptions = ManySubscriptionConfig(default=["waternsw"], hidden=True)
+    # Live readings from the WaterNSW and Queensland integrations, recorded as
+    # they arrive.
+    subscriptions = ManySubscriptionConfig(default=["waternsw", "qldwater"], hidden=True)
     position = config.ApplicationPosition()
     default_open = config.ApplicationDefaultOpen()
 

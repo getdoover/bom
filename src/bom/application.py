@@ -22,7 +22,7 @@ from .app_ui import BomUI, layout
 from .floodmap import find_levels
 from .ftp import download_latest
 from .hcs import Reading, flood_class, level_trend, parse_hcs, rain_day, unique_readings
-from .live import CHANNEL as LIVE_CHANNEL, live_flows, live_levels
+from .live import CHANNELS as LIVE_CHANNELS, live_flows, live_levels
 from .obs import Observation, parse_observations
 from .flowstats import fetch_history, flow_ranges, thresholds
 from .wdo import Flow, convert_flow, fetch_discharge
@@ -35,6 +35,11 @@ FLOW_BACKFILL = timedelta(days=7)
 HISTORY_OFFSET_MS = {"weather": 0, "rain": 1, "flow": 2, "level": 3}
 # Bump when the flow statistics change meaning, so every gauge recomputes them.
 FLOW_STATS_VERSION = 3
+# A gauge with no BOM source hears from its live integration hourly (the
+# gauges transmit hourly and the integrations fetch at half past), so it is
+# allowed this long without a reading before it shows offline, whatever the
+# shorter Offline After meant for BOM's 15-minute feed says.
+LIVE_OFFLINE_MINUTES = 180
 
 log = logging.getLogger(__name__)
 
@@ -95,29 +100,22 @@ class Bom(Application):
         await self.refresh()
 
     async def on_message_create(self, event: MessageCreateEvent) -> None:
-        if event.channel.name == LIVE_CHANNEL:
-            await self.refresh(live=event.message.data)
+        if event.channel.name in LIVE_CHANNELS:
+            await self.record_live(event.message.data)
 
-    async def refresh(self, live: dict | None = None) -> None:
-        """Record what is new since the last run.
-
-        `live` is a batch of readings from the WaterNSW integration. Its points
-        are recorded ahead of Water Data Online's, so once they have moved
-        river_flow_time on, the day-old WDO points fall behind it and are
-        skipped; if the integration stops, WDO fills in from where it left off.
-        """
+    async def refresh(self) -> None:
+        """Record what is new from BOM and Water Data Online since the last run."""
         river_id = self.config.river.station_id.value.strip()
         rain_id = self.config.rain.station_id.value.strip()
         weather_id = self.config.weather.station_id.value.strip()
         flow_id = self.config.flow.station_id.value.strip()
-        # The integration reads this to know which gauge to fetch for us.
-        await self.tags.waternsw_site.set(flow_id or None)
+        # The live data integrations read these to know which gauge to fetch
+        # for us, and which of them should.
+        await self.tags.live_site.set(flow_id or None)
+        await self.tags.state.set(self.config.state.value)
         if not any((river_id, rain_id, weather_id, flow_id)):
             await self.tags.status.set("No station configured")
             return
-
-        if not live or not flow_id or live.get("site") != flow_id:
-            live = {}
 
         problems = []
         flows: list[Flow] = []
@@ -127,8 +125,6 @@ class Bom(Application):
             except Exception as e:
                 log.exception("Water Data Online fetch failed: %s", e)
                 problems.append(f"Flow fetch failed: {e}")
-        live_flow = live_flows(live)
-        flows = sorted({f.time: f for f in flows + live_flow}.values(), key=lambda f: f.time)
         if flow_id and not flows and self.tags.river_flow_time.value is None and not problems:
             problems.append(f"No flow data for {flow_id}")
 
@@ -171,10 +167,6 @@ class Bom(Application):
         )
 
         levels = [r for r in readings if r.kind == "WL" and r.station_id == river_id]
-        # Without a flood-warning gauge, the integration's level stands in. The
-        # two are kept apart because they are usually on different datums.
-        if not river_id:
-            levels = live_levels(live)
         rains = [r for r in readings if r.kind == "RN" and r.station_id == rain_id]
         if rains:
             # If both 15-min and hourly files are configured, sum only the finest.
@@ -182,8 +174,7 @@ class Bom(Application):
             rains = [r for r in rains if (r.period_s or 0) == finest]
 
         history: dict[int, dict] = defaultdict(dict)
-        flood_levels: list[float | None] = [None, None, None]
-        if river_id or levels:
+        if river_id:
             flood_levels = await self.flood_levels(river_id, letter)
             await self.update_river(levels, flood_levels, history)
         await self.update_rain(rains, utc_offset, history)
@@ -192,11 +183,7 @@ class Bom(Application):
         await self.update_flow(flows, history)
         if flow_id:
             await self.update_flow_ranges(flow_id)
-
-        for ts in sorted(history):
-            await self.api.create_message(
-                "tag_values", {self.app_key: history[ts]}, timestamp=ts
-            )
+        await self.record_history(history)
 
         if files:
             missing = [
@@ -215,20 +202,68 @@ class Bom(Application):
         await self.update_warnings()
         await self.update_layout()
 
-        # WDO flow runs a day behind, so it only decides online/offline on its
-        # own; the integration's live flow counts like any other reading.
-        times = [r.time for r in levels + rains] + [f.time for f in live_flow]
+        times = [r.time for r in levels + rains]
         if observation:
             times.append(observation.time)
-        if not times and flows:
-            times.append(flows[-1].time)
-        latest = max(times, default=None)
+        if times:
+            await self.ping(max(times))
+        elif self.tags.river_flow_time.value:
+            # Flow alone decides online/offline, from the latest point recorded
+            # by any source: WDO's runs a day behind and so reads as offline,
+            # while a live integration's keeps the gauge online between runs.
+            await self.ping(datetime.fromtimestamp(self.tags.river_flow_time.value / 1000, timezone.utc), live=True)
+
+    async def record_live(self, live: dict) -> None:
+        """Record a batch of readings from a live data integration.
+
+        Only the batch is recorded; BOM and Water Data Online are left to the
+        scheduled run, so an integration feeding every gauge in an organisation
+        at once does not send them all to BOM's FTP in the same second. Live
+        points are recorded ahead of WDO's, so once they have moved
+        river_flow_time on, the day-old WDO points fall behind it and are
+        skipped; if the integration stops, WDO fills in from where it left off.
+        """
+        river_id = self.config.river.station_id.value.strip()
+        flow_id = self.config.flow.station_id.value.strip()
+        if not flow_id or (live or {}).get("site") != flow_id:
+            return
+
+        flows = live_flows(live)
+        # Without a flood-warning gauge, the integration's level stands in. The
+        # two are kept apart because they are usually on different datums, so
+        # its flood levels can only be Manual ones (no BOM map lookup here).
+        levels = live_levels(live) if not river_id else []
+
+        history: dict[int, dict] = defaultdict(dict)
+        if levels:
+            letter, _ = STATES[self.config.state.value]
+            await self.update_river(levels, await self.flood_levels(river_id, letter), history)
+        await self.update_flow(flows, history)
+        await self.record_history(history)
+
+        await self.update_warnings()
+        await self.update_layout()
+
+        latest = max([r.time for r in levels] + [f.time for f in flows], default=None)
         if latest is not None:
-            await self.ping_connection(
-                online_at=latest,
-                offline_at=latest
-                + timedelta(minutes=self.config.offline_after_minutes.value),
+            await self.ping(latest, live=True)
+
+    async def record_history(self, history: dict[int, dict]) -> None:
+        for ts in sorted(history):
+            await self.api.create_message(
+                "tag_values", {self.app_key: history[ts]}, timestamp=ts
             )
+
+    async def ping(self, latest: datetime, live: bool = False) -> None:
+        """Online from the latest reading, offline after the configured wait.
+
+        A reading from a live integration (or the flow mark it moves) arrives
+        hourly, so it is allowed at least LIVE_OFFLINE_MINUTES.
+        """
+        minutes = self.config.offline_after_minutes.value
+        if live:
+            minutes = max(minutes, LIVE_OFFLINE_MINUTES)
+        await self.ping_connection(online_at=latest, offline_at=latest + timedelta(minutes=minutes))
 
     async def update_warnings(self) -> None:
         """Flag readings older than each source's Stale After, and a river in flood."""
