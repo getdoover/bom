@@ -4,6 +4,7 @@ import asyncio
 import logging
 import math
 from collections import defaultdict
+from functools import partial
 from datetime import datetime, timedelta, timezone
 
 from pydoover.models import (
@@ -26,8 +27,15 @@ from .live import CHANNEL as LIVE_CHANNEL, live_flows, live_levels
 from .obs import Observation, parse_observations
 from .flowstats import fetch_history, flow_ranges, thresholds
 from .wdo import Flow, convert_flow, fetch_discharge
+from . import wmip
 
 FLOW_BACKFILL = timedelta(days=7)
+# Qld WMIP: a week on the first run, then once an hour from hh:25 (telemetry
+# lands hourly, and the service guide asks for hourly calls at hh:30). Each call
+# re-reads a few hours before the last reading, so the trend has points to go on.
+WMIP_BACKFILL = timedelta(days=7)
+WMIP_MINUTE = 25
+WMIP_CONTEXT = timedelta(hours=3)
 # Doover keys a message by its timestamp, so a second history message at the
 # same millisecond replaces the first. Each source arrives in its own run
 # (rain hourly, live flow hourly, WDO flow a day late) and most land on the
@@ -65,6 +73,11 @@ def flood_ranges(levels: list[float | None], lowest: float) -> list[dict]:
     return [r.to_dict() for r in ranges]
 
 
+def wmip_slot(now: datetime) -> str:
+    """The WMIP polling hour `now` falls in; it starts at hh:25."""
+    return (now - timedelta(minutes=WMIP_MINUTE)).strftime("%Y-%m-%dT%H")
+
+
 def split_prefixes(value: str, letter: str) -> list[str]:
     return [p.strip().replace("{state}", letter) for p in value.split(",") if p.strip()]
 
@@ -89,30 +102,34 @@ class Bom(Application):
     async def on_deployment(self, event: DeploymentEvent) -> None:
         # The framework has just published the UI for the current tags.
         await self.tags.ui_layout.set(layout(self.config, self.tags))
-        await self.refresh()
+        await self.refresh(force_wmip=True)
 
     async def on_manual_invoke(self, event: ManualInvokeEvent) -> None:
-        await self.refresh()
+        await self.refresh(force_wmip=True)
 
     async def on_message_create(self, event: MessageCreateEvent) -> None:
         if event.channel.name == LIVE_CHANNEL:
             await self.refresh(live=event.message.data)
 
-    async def refresh(self, live: dict | None = None) -> None:
+    async def refresh(self, live: dict | None = None, force_wmip: bool = False) -> None:
         """Record what is new since the last run.
 
         `live` is a batch of readings from the WaterNSW integration. Its points
         are recorded ahead of Water Data Online's, so once they have moved
         river_flow_time on, the day-old WDO points fall behind it and are
         skipped; if the integration stops, WDO fills in from where it left off.
+
+        With a Qld gauge number, level and flow come from WMIP instead, asked
+        hourly (or straight away on `force_wmip`, for a deployment or a manual run).
         """
         river_id = self.config.river.station_id.value.strip()
         rain_id = self.config.rain.station_id.value.strip()
         weather_id = self.config.weather.station_id.value.strip()
         flow_id = self.config.flow.station_id.value.strip()
+        qld_id = self.config.qld.gauge_number.value.strip().upper()
         # The integration reads this to know which gauge to fetch for us.
         await self.tags.waternsw_site.set(flow_id or None)
-        if not any((river_id, rain_id, weather_id, flow_id)):
+        if not any((river_id, rain_id, weather_id, flow_id, qld_id)):
             await self.tags.status.set("No station configured")
             return
 
@@ -121,20 +138,30 @@ class Bom(Application):
 
         problems = []
         flows: list[Flow] = []
-        if flow_id:
+        # WMIP's flow is live, so Water Data Online's day-old copy isn't needed.
+        if flow_id and not qld_id:
             try:
                 flows = await self.fetch_flow(flow_id)
             except Exception as e:
                 log.exception("Water Data Online fetch failed: %s", e)
                 problems.append(f"Flow fetch failed: {e}")
         live_flow = live_flows(live)
+        qld_levels: list[Reading] = []
+        if qld_id and (force_wmip or self.tags.wmip_checked.value != wmip_slot(datetime.now(timezone.utc))):
+            try:
+                qld_levels, qld_flows = await self.fetch_wmip(qld_id)
+                live_flow += qld_flows
+            except Exception as e:
+                log.exception("WMIP fetch failed: %s", e)
+                problems.append(f"WMIP fetch failed: {e}")
         flows = sorted({f.time: f for f in flows + live_flow}.values(), key=lambda f: f.time)
         if flow_id and not flows and self.tags.river_flow_time.value is None and not problems:
             problems.append(f"No flow data for {flow_id}")
 
         letter, utc_offset = STATES[self.config.state.value]
         prefixes = []
-        if river_id:
+        # With WMIP the river station only gives flood levels, from the map pages.
+        if river_id and not qld_id:
             prefixes += split_prefixes(self.config.river.files.value, letter)
         if rain_id:
             prefixes += split_prefixes(self.config.rain.files.value, letter)
@@ -171,9 +198,12 @@ class Bom(Application):
         )
 
         levels = [r for r in readings if r.kind == "WL" and r.station_id == river_id]
-        # Without a flood-warning gauge, the integration's level stands in. The
-        # two are kept apart because they are usually on different datums.
-        if not river_id:
+        # WMIP's level is on the flood-warning gauge's datum, and finer, so it
+        # replaces it. Without a flood-warning gauge, the integration's level
+        # stands in; the two are kept apart as they are usually on different datums.
+        if qld_id:
+            levels = qld_levels
+        elif not river_id:
             levels = live_levels(live)
         rains = [r for r in readings if r.kind == "RN" and r.station_id == rain_id]
         if rains:
@@ -190,8 +220,10 @@ class Bom(Application):
         if observation:
             await self.update_weather(observation, history)
         await self.update_flow(flows, history)
-        if flow_id:
-            await self.update_flow_ranges(flow_id)
+        if qld_id:
+            await self.update_flow_ranges(qld_id, partial(wmip.fetch_history, self.config.qld.url.value))
+        elif flow_id:
+            await self.update_flow_ranges(flow_id, partial(fetch_history, self.config.flow.url.value))
 
         for ts in sorted(history):
             await self.api.create_message(
@@ -202,7 +234,7 @@ class Bom(Application):
             missing = [
                 f"{name} {sid}"
                 for name, sid, got in (
-                    ("river", river_id, levels),
+                    ("river", "" if qld_id else river_id, levels),
                     ("rain", rain_id, rains),
                     ("weather", weather_id, observation),
                 )
@@ -241,10 +273,12 @@ class Bom(Application):
             return time_ms is not None and now_ms - time_ms <= limit_ms
 
         c, t = self.config, self.tags
-        # A level from the integration is held to the river's limit too.
-        live_level = bool(c.flow.station_id.value.strip()) and t.river_level_time.value is not None
+        # A level from the integration or WMIP is held to the river's limit too,
+        # and WMIP's flow to the flow's.
+        qld = bool(c.qld.gauge_number.value.strip())
+        live_level = (qld or bool(c.flow.station_id.value.strip())) and t.river_level_time.value is not None
         await t.river_level_ok.set(fresh(c.river, t.river_level_time.value, live_level))
-        await t.river_flow_ok.set(fresh(c.flow, t.river_flow_time.value))
+        await t.river_flow_ok.set(fresh(c.flow, t.river_flow_time.value, qld))
         await t.rain_ok.set(fresh(c.rain, t.rain_time.value))
         await t.weather_ok.set(fresh(c.weather, t.weather_time.value))
         await t.flood_ok.set(t.river_flood_class.value in (None, "Below flood level"))
@@ -370,6 +404,30 @@ class Bom(Application):
             now + timedelta(hours=1),
         )
 
+    async def fetch_wmip(self, qld_id: str) -> tuple[list[Reading], list[Flow]]:
+        """Level and flow logged since the last of each, or the last week on the first run.
+
+        The hour is marked first, so a failure waits for the next hour rather
+        than retrying every run.
+        """
+        now = datetime.now(timezone.utc)
+        await self.tags.wmip_checked.set(wmip_slot(now))
+        floor = now - WMIP_BACKFILL
+
+        def since(last_ms: float | None) -> datetime:
+            if not last_ms:
+                return floor
+            return max(datetime.fromtimestamp(last_ms / 1000, timezone.utc) - WMIP_CONTEXT, floor)
+
+        url, end = self.config.qld.url.value, now + timedelta(hours=1)
+        levels = await asyncio.to_thread(
+            wmip.fetch_levels, url, qld_id, since(self.tags.river_level_time.value), end
+        )
+        flows = await asyncio.to_thread(
+            wmip.fetch_flows, url, qld_id, since(self.tags.river_flow_time.value), end
+        )
+        return levels, flows
+
     async def update_flow(self, flows: list[Flow], history: dict) -> None:
         """Record new flow points, converted into the configured display units."""
         units = self.config.flow.units.value
@@ -386,7 +444,7 @@ class Bom(Application):
         if latest is not None:
             await self.tags.river_flow.set(convert_flow(latest, units))
 
-    async def update_flow_ranges(self, flow_id: str) -> None:
+    async def update_flow_ranges(self, flow_id: str, fetch) -> None:
         """Flow bands: configured values first, else from the gauge's own record.
 
         The record is read once a month, again when the station changes, or the
@@ -398,11 +456,11 @@ class Bom(Application):
         checked = self.tags.flow_stats_checked.value
         if checked not in (current, f"fail:{now.date()}/{flow_id}"):
             try:
-                record = await asyncio.to_thread(fetch_history, self.config.flow.url.value, flow_id)
+                record = await asyncio.to_thread(fetch, flow_id)
                 await self.tags.flow_stats.set(thresholds(record))
                 await self.tags.flow_stats_checked.set(current)
             except Exception as e:
-                log.exception("Water Data Online history fetch failed: %s", e)
+                log.exception("Flow history fetch failed: %s", e)
                 await self.tags.flow_stats_checked.set(f"fail:{now.date()}/{flow_id}")
 
         units = self.config.flow.units.value

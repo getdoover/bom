@@ -7,6 +7,7 @@ from pydoover.config import NotSet
 from pydoover.processor import ManySubscriptionConfig, ScheduleConfig
 
 from .wdo import AS_RECORDED, DEFAULT_FLOW_UNIT, DEFAULT_URL, FLOW_UNITS, HOURLY_MEAN
+from .wmip import DEFAULT_URL as WMIP_URL
 
 # State -> (BOM product letter, UTC offset of local standard time). BOM rain
 # days run 9am-9am local standard time, so daylight saving is ignored.
@@ -58,6 +59,7 @@ FLOW_DEFAULTS = {
     "low_flow_below": None,
     "high_flow_above": None,
 }
+QLD_DEFAULTS = {"gauge_number": "", "service_url": WMIP_URL}
 FLOW_RANGE_HELP = "In the display units. Leave blank to take it from the gauge's history."
 # Threshold name (see flowstats) -> RiverFlowSettings attribute holding its override.
 FLOW_RANGE_FIELDS = {
@@ -219,6 +221,20 @@ class RiverFlowSettings(config.Object):
     )
 
 
+class QldWaterSettings(config.Object):
+    gauge_number = config.String(
+        "Gauge Number",
+        default="",
+        description=(
+            "Qld government gauge number on the Water Monitoring Information Portal, e.g. "
+            "120002D. When set, river level and flow come from here (millimetre readings, "
+            "fetched hourly) instead of the BOM feed and Water Data Online; the River Level "
+            "station still gives the flood levels. Leave blank to skip."
+        ),
+    )
+    url = config.String("Service URL", default=QLD_DEFAULTS["service_url"], advanced=True)
+
+
 class BomConfig(config.Schema):
     state = config.Enum(
         "State",
@@ -230,6 +246,7 @@ class BomConfig(config.Schema):
     rain = RainfallSettings("Rainfall", default=RAIN_DEFAULTS)
     weather = WeatherStationSettings("Weather Station", default=WEATHER_DEFAULTS)
     flow = RiverFlowSettings("River Flow", default=FLOW_DEFAULTS)
+    qld = QldWaterSettings("Qld Water Monitoring", default=QLD_DEFAULTS)
     ftp = FtpSettings(
         "FTP Server",
         default=FTP_DEFAULTS,

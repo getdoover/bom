@@ -135,7 +135,7 @@ def make_app() -> Bom:
         "weather_pressure", "weather_wind_dir", "weather_wind_speed", "weather_wind_gust",
         "weather_time", "weather_station",
         "status", "rain_day", "flood_map_page", "flood_map_levels", "flood_map_checked",
-        "river_level_ok", "river_flow_ok", "rain_ok", "weather_ok", "flood_ok", "waternsw_site",
+        "river_level_ok", "river_flow_ok", "rain_ok", "weather_ok", "flood_ok", "waternsw_site", "wmip_checked",
     )})()
 
     async def ping_connection(**kwargs) -> None:

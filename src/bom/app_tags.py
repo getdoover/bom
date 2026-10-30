@@ -57,3 +57,6 @@ class BomTags(tags.Tags):
     ui_layout = tags.String(default=None)
     # The gauge the WaterNSW integration should fetch for this device.
     waternsw_site = tags.String(default=None)
+    # The hour (UTC, e.g. 2026-10-30T02) of the last Qld WMIP fetch; WMIP is
+    # asked once an hour, from hh:25, as its service guide asks.
+    wmip_checked = tags.String(default=None)

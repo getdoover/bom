@@ -13,6 +13,7 @@ observation time.
 | Rainfall | Last 15 min, last hour, since 9am (mm) | `IDx65900` (15-min totals, last ~2 h) |
 | Weather Station | Temperature, feels like, humidity, dew point, pressure, wind direction / speed / gust | `IDx60920.xml` (latest ~10-min observation per station) |
 | River Flow | Flow (ML/day by default) with its own "as at" time | Water Data Online SOS2 API over HTTPS, not FTP (see below) |
+| Qld Water Monitoring | Live level and flow for Qld government gauges | WMIP web service over HTTPS (see below) |
 
 Each section takes a BOM station number (e.g. `068212`); leave it blank to skip
 that source. Many sites use the same number for river and rain, and the rain
@@ -72,12 +73,42 @@ at the top of the page once that source's latest reading is older than it
 is published a day behind). A warning also shows while the river is at or
 above its minor flood level.
 
+## Qld Water Monitoring (WMIP)
+
+Queensland government gauges can take their river level and flow from the
+department's Water Monitoring Information Portal
+([water-monitoring.information.qld.gov.au](https://water-monitoring.information.qld.gov.au/)),
+which needs no key. Set **Qld Water Monitoring: Gauge Number** to the Qld gauge
+number (e.g. `120002D` for the Burdekin at Sellheim, whose flood-warning number
+is `533075`). Then:
+
+- **Level** comes from WMIP instead of the BOM river files: millimetre readings,
+  logged on the hour and again whenever the level moves (every few minutes in a
+  flood). Some Qld gauges reach the BOM feed only in 5 cm steps, so this is the
+  finer record. It is on the same datum (local gauge height), so the River
+  Level station still supplies the flood levels from BOM's map pages.
+- **Flow** comes from WMIP, rated from each level reading (m³/s), live rather
+  than a day behind, so Water Data Online is not asked. Flow bands come from
+  the gauge's WMIP daily record (stored discharge, gaps rated), once a month,
+  as with Water Data Online; a record under three years gives no bands.
+- Rain and weather still come from BOM.
+
+Gauges send their data hourly, so a reading can be up to about 90 minutes old.
+The service publishes no quota, but asks for hourly calls at hh:30 and blocks
+IP addresses that make excessive or malformed calls. The app therefore asks
+WMIP once an hour (the first run from hh:25 each hour, plus straight away on a
+deployment or manual run), checks the gauge number before sending it, and
+waits for the next hour after a failure. Each call reads everything logged
+since the last reading (a week on the first run). The service guide is the
+[WMIP API document](https://water-monitoring.information.qld.gov.au/wini/Documents/WMIP_API_2025.pdf);
+questions go to wmis@dlgwv.qld.gov.au.
+
 ## Adding a data source
 
 Add a config section in `app_config.py`, tags and UI elements for its values,
 and a step in `Bom.refresh()`. `ftp.download_latest` fetches the newest file
 for any prefix; `hcs.py` parses the flood-warning (BOM-HCS) format, `obs.py` the
-observation XML, `wdo.py` fetches Water Data Online discharge, and
+observation XML, `wdo.py` fetches Water Data Online discharge, `wmip.py` Qld WMIP level and flow, and
 `floodmap.py` reads flood levels from the map pages.
 
 ## BoM FWIN Dashboard

@@ -80,9 +80,10 @@ def layout(config, tags) -> str:
     units, with the fingerprint of its bands (carried literally, like the level's).
     """
     parts = []
-    # A level comes from the flood-warning gauge, or the WaterNSW integration
-    # on the flow gauge when there is none.
-    gauges = config.river.station_id.value.strip() or config.flow.station_id.value.strip()
+    # A level comes from the flood-warning gauge, Qld WMIP, or the WaterNSW
+    # integration on the flow gauge when there is neither.
+    qld = config.qld.gauge_number.value.strip()
+    gauges = config.river.station_id.value.strip() or qld or config.flow.station_id.value.strip()
     if gauges and tags.river_level.value is not None:
         parts.append("river")
         if tags.river_ranges.value:
@@ -92,7 +93,7 @@ def layout(config, tags) -> str:
         parts.append("rain_15min" if tags.rain_period_s.value == 900 else "rain_last_hour")
     if config.weather.station_id.value.strip():
         parts.append("weather")
-    if config.flow.station_id.value.strip():
+    if config.flow.station_id.value.strip() or qld:
         digest = hashlib.md5(json.dumps(tags.river_flow_ranges.value or [], sort_keys=True).encode())
         parts.append(f"flow:{config.flow.units.value}:{digest.hexdigest()[:8]}")
     return ",".join(parts)
