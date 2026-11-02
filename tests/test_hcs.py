@@ -205,12 +205,12 @@ def test_refresh_records_history_and_totals(gauge_record) -> None:
     assert all(ch == "tag_values" for ch, _, _ in app.api.messages)
     assert list(history) == sorted(history)
     # 0.4 + 1.0 end the 29th's rain day; 0.6 starts the 30th's.
-    assert history[int(utc("2026-09-29T23:00:00").timestamp() * 1000) + 1]["rain_since_9am"] == 1.4
-    assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000) + 1]["rain_since_9am"] == 0.6
-    assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000) + 1]["rain_last_hour"] == 2.0
+    assert history[int(utc("2026-09-29T23:00:00").timestamp() * 1000)]["rain_since_9am"] == 1.4
+    assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000)]["rain_since_9am"] == 0.6
+    assert history[int(utc("2026-09-29T23:15:00").timestamp() * 1000)]["rain_last_hour"] == 2.0
     weather = history[int(utc("2026-09-30T23:40:00").timestamp() * 1000)]
     assert weather["weather_temp"] == 20.6 and weather["weather_wind_gust"] == 35
-    assert history[int(utc("2026-09-29T11:00:00").timestamp() * 1000) + 2]["river_flow"] == pytest.approx(19.149 * 86.4)
+    assert history[int(utc("2026-09-29T11:00:00").timestamp() * 1000)]["river_flow"] == pytest.approx(19.149 * 86.4)
 
     # The first readings and flood levels republish the UI: a radial level
     # gauge and an overview plot of level and 15-minute rain.

@@ -36,11 +36,6 @@ FLOW_BACKFILL = timedelta(days=7)
 WMIP_BACKFILL = timedelta(days=7)
 WMIP_MINUTE = 25
 WMIP_CONTEXT = timedelta(hours=3)
-# Doover keys a message by its timestamp, so a second history message at the
-# same millisecond replaces the first. Each source arrives in its own run
-# (rain hourly, live flow hourly, WDO flow a day late) and most land on the
-# quarter-hour, so each is written a few milliseconds apart to keep them all.
-HISTORY_OFFSET_MS = {"weather": 0, "rain": 1, "flow": 2, "level": 3}
 # Bump when the flow statistics change meaning, so every gauge recomputes them.
 FLOW_STATS_VERSION = 3
 
@@ -335,7 +330,7 @@ class Bom(Application):
         last_ms = self.tags.river_level_time.value or 0
         for r in levels:
             if to_ms(r.time) > last_ms:
-                history[to_ms(r.time) + HISTORY_OFFSET_MS["level"]]["river_level"] = r.value
+                history[to_ms(r.time)]["river_level"] = r.value
 
         latest = levels[-1]
         if to_ms(latest.time) >= last_ms:
@@ -364,7 +359,7 @@ class Bom(Application):
                 day, total = reading_day, 0.0
             total += r.value
             hour = sum(x.value for x in rains if r.time - timedelta(hours=1) < x.time <= r.time)
-            history[to_ms(r.time) + HISTORY_OFFSET_MS["rain"]].update(
+            history[to_ms(r.time)].update(
                 rain_15min=r.value,
                 rain_last_hour=round(hour, 1),
                 rain_since_9am=round(total, 1),
@@ -435,7 +430,7 @@ class Bom(Application):
         last_ms = self.tags.river_flow_time.value or 0
         new = [f for f in flows if to_ms(f.time) > last_ms]
         for f in new:
-            history[to_ms(f.time) + HISTORY_OFFSET_MS["flow"]]["river_flow"] = convert_flow(f.value, units)
+            history[to_ms(f.time)]["river_flow"] = convert_flow(f.value, units)
         if new:
             await self.tags.river_flow_cumec.set(new[-1].value)
             await self.tags.river_flow_time.set(to_ms(new[-1].time))
@@ -490,6 +485,6 @@ class Bom(Application):
         for name, value in values.items():
             await getattr(self.tags, name).set(value)
         await self.tags.weather_time.set(to_ms(obs.time))
-        history[to_ms(obs.time) + HISTORY_OFFSET_MS["weather"]].update(
+        history[to_ms(obs.time)].update(
             {k: v for k, v in values.items() if v is not None}
         )

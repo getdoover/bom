@@ -122,13 +122,13 @@ def test_level_and_flow_come_from_wmip() -> None:
     assert app.tags.river_level.value == 1.524
     assert app.tags.river_datum.value == "LGH"
     assert app.tags.river_trend.value == "rising"
-    assert history(app)[ms(T1) + 3]["river_level"] == 1.416
+    assert history(app)[ms(T1)]["river_level"] == 1.416
     # Flood levels still come from the flood-warning gauge's map page.
     assert app.tags.river_flood_class.value == "Below flood level"
     # Flow is live, so Water Data Online isn't asked.
     wdo.assert_not_called()
     assert app.tags.river_flow_time.value == ms(T2)
-    assert history(app)[ms(T2) + 2]["river_flow"] == pytest.approx(23.9 * 86.4)
+    assert history(app)[ms(T2)]["river_flow"] == pytest.approx(23.9 * 86.4)
     # The BOM river files aren't fetched; rain and weather still are.
     prefixes = download.call_args.args[4]
     assert "IDQ65911" not in prefixes and "IDQ65900" in prefixes
